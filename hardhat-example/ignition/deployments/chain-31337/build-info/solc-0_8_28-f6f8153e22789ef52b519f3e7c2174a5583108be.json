@@ -1,0 +1,40 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-f6f8153e22789ef52b519f3e7c2174a5583108be",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "userSourceNameMap": {
+    "contracts/FileStorage.sol": "project/contracts/FileStorage.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/FileStorage.sol": {
+        "content": "// SPDX-License-Identifier: UNLICENSED\r\npragma solidity ^0.8.28;\r\n\r\ncontract FileStorage {\r\n\r\n  // Struct to represent a file\r\n   struct File {\r\n    string [] ipfsHash ;\r\n    string fileName;\r\n    string exts;  // file extension png,pdf,docx,etc\r\n    uint256 fileSize;\r\n    uint256 timestamp;\r\n    string encryptionIv;\r\n   }\r\n \r\n  //  mapping to store files for each user\r\n   mapping(address => File[] ) private userFiles;\r\n\r\n  // mapping to track total storage used by each user\r\n   mapping(address=> uint256) public totalStorageUsed;\r\n\r\n  //   event to emit when a file is uploaded\r\n    event FileUploaded(address indexed user, string [] ipfsHash, string fileName, uint256 fileSize, string exts, uint256 timestamp, string encryptionIv);\r\n    \r\n   //  event to emit when a file is deleted\r\n    event FileDeleted(address indexed user, uint256 index, uint256 freedSize);\r\n\r\n   // internal function to handle file uploads with validation to minimize gas costs for users\r\n   function _upload(string [] memory _ipfsHash, string memory _fileName,string memory _exts , uint256 _fileSize,string memory _encryptionIv ) internal {\r\n   \r\n      //  ensure that the IPFS hash and file name are not empty and file size is positive\r\n      require(_ipfsHash.length > 0, \"IPFS hash cannot be empty\");\r\n   \r\n      require(bytes(_fileName).length > 0, \"File name cannot be empty\");\r\n\r\n      require(_fileSize>0, \"File size must be positive\");\r\n  \r\n      require(bytes(_encryptionIv).length > 0, \"Encryption IV required\");\r\n    \r\n      File memory newFile = File({\r\n        ipfsHash: _ipfsHash,\r\n        fileName: _fileName,\r\n        exts: _exts,\r\n        fileSize: _fileSize,\r\n        timestamp: block.timestamp,\r\n        encryptionIv: _encryptionIv\r\n    });\r\n\r\n\r\n    // store the file metadata in the user's file list\r\n    userFiles[msg.sender].push(newFile);\r\n\r\n    //  update the total storage used by the user\r\n    totalStorageUsed[msg.sender] += _fileSize ;\r\n    \r\n    // emit the FileUploaded event\r\n    emit FileUploaded(msg.sender, _ipfsHash, _fileName, _fileSize, _exts, block.timestamp, _encryptionIv);\r\n    }\r\n\r\n// Function to upload file metadata to the contract\r\n function uploadFile( string [] memory _ipfsHash, string memory _fileName, string memory _exts, uint256 _fileSize,string memory _encryptionIv) public {\r\n    _upload(_ipfsHash, _fileName, _exts, _fileSize,_encryptionIv);\r\n }\r\n\r\n//  function to upload multiple files at once\r\n//  function uploadMultipleFiles( string [] memory _ipfsHashes, string [] memory _fileNames, string [] memory _exts , uint256 [] memory _fileSizes,string[] memory _encryptionIvs) public{\r\n    \r\n//     require(_ipfsHashes.length == _fileNames.length && _fileNames.length == _exts.length && _exts.length == _fileSizes.length &&_fileSizes.length == _encryptionIvs.length, \"Input arrays must have the same length\");\r\n//     require(_ipfsHashes.length > 0, \"No files provided\");\r\n\r\n//     for (uint256 i = 0; i < _ipfsHashes.length; i++) {\r\n//         _upload(_ipfsHashes[i], _fileNames[i], _exts[i], _fileSizes[i], _encryptionIvs[i] );\r\n//     }\r\n//  }\r\n //  function to retrieve files for a user\r\n function getUserFiles() public view returns (File[] memory) {\r\n    return userFiles[msg.sender];\r\n }\r\n\r\n// Function to get the number of files a user has without fetching all the data\r\nfunction getFileCount() public view returns (uint256) {\r\n    return userFiles[msg.sender].length;\r\n}\r\n\r\n//  delete a file from the user's file list\r\n function deleteFile(uint256 index) public {\r\n  require(index < userFiles[msg.sender].length, \"Invalid file index\");\r\n  File memory deletedFile = userFiles[msg.sender][index];\r\n  // reduce the total storage used by the size of the deleted file\r\n  totalStorageUsed[msg.sender] -= deletedFile.fileSize;\r\n \r\n  // remove the file from the user's file list by replacing it with the last file and popping the last element\r\n  userFiles[msg.sender][index] = userFiles[msg.sender][userFiles[msg.sender].length - 1];\r\n  userFiles[msg.sender].pop();\r\n\r\n  emit FileDeleted(msg.sender, index, deletedFile.fileSize);\r\n }\r\n}\r\n// Random number to make this contract file unique: 269790866\r\n"
+      }
+    }
+  }
+}
