@@ -1,11 +1,15 @@
-import { http, createConfig } from "wagmi";
-import { hardhat } from "wagmi/chains";
-import { injected, metaMask } from "wagmi/connectors";
+"use client";
 
-export const config = createConfig({
-  chains: [hardhat],
-  connectors: [injected(), metaMask()],
-  transports: {
-    [hardhat.id]: http("http://127.0.0.1:8545"),
-  },
+import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { hardhat, sepolia } from "wagmi/chains"; // 1. Import hardhat
+
+export const config = getDefaultConfig({
+  appName: "DecentraVault",
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_ID || "YOUR_PROJECT_ID",
+  // 2. Put hardhat FIRST in the array to make it the default
+  chains: [
+    hardhat,
+    ...(process.env.NODE_ENV === "development" ? [sepolia] : []),
+  ],
+  ssr: true,
 });
