@@ -4,8 +4,23 @@ import { configVariable, defineConfig } from "hardhat/config";
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
   solidity: {
-    version: "0.8.28",
+    version: "0.8.25",
+    settings: {
+      viaIR: true,
+      optimizer: {
+        enabled: true,
+        runs: 20000, // Increase runs to force more aggressive simplification
+        details: {
+          yul: true,
+          yulDetails: {
+            stackAllocation: true, // Explicitly tell it to optimize stack slots
+            optimizerSteps: "u", // Standard cleanup step
+          },
+        },
+      },
+    },
   },
+
   networks: {
     sepolia: {
       type: "http",

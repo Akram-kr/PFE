@@ -6,6 +6,9 @@ import { StorageBar } from "@/components/vault/StorageBar";
 import { UploadZone } from "@/components/vault/UploadZone";
 import { FileGrid } from "@/components/vault/FileGrid";
 import { Toast } from "@/components/Ui/Toast";
+import { StatsRow } from "@/components/vault/StatsRow";
+import { Sidebar } from "../layout/SideBar";
+import { ShardMap } from "./ShardMap";
 
 interface ToastItem {
   id: number;
@@ -121,9 +124,23 @@ export function VaultDashboard() {
             </span>
           </div>
         </div>
+        <Sidebar
+          storagePercent={storagePercent}
+          usedFormatted={usedFormatted}
+          fileCount={files.length}
+          activeTab="vault"
+          onTabChange={() => {}}
+        />
+        {/* <ShardMap
+          fileCount={files.length}
+          usedFormatted={usedFormatted}
+          remainingFormatted={remainingFormatted}
+          storagePercent={storagePercent}
+          latestFile={null}
+        /> */}
 
         {/* Storage bar */}
-        <StorageBar
+        <StatsRow
           usedFormatted={usedFormatted}
           remainingFormatted={remainingFormatted}
           storagePercent={storagePercent}

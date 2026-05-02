@@ -152,18 +152,15 @@ contract FileStorage {
     // ─────────────────────────────────────────────
 
     /**
-     * @notice Core upload logic with all validation
-     * @dev Separated from public function to allow future batch uploads
-     *      without duplicating validation code
+     * @notice Validates all file inputs before storage
      */
-    function _upload(
+    function _validateUploadInputs(
         string[3] memory _ipfsHashes,
         string memory _fileName,
-        string memory _fileExtension,
-        uint256 _fileSize,
         string memory _encryptionIv,
+        uint256 _fileSize,
         bytes32 _fileHash
-    ) internal {
+    ) internal view {
         // Validate all 3 shard CIDs are non-empty
         require(bytes(_ipfsHashes[0]).length > 0, "Shard 0 CID cannot be empty");
         require(bytes(_ipfsHashes[1]).length > 0, "Shard 1 CID cannot be empty");
@@ -174,10 +171,10 @@ contract FileStorage {
         require(_fileSize > 0, "File size must be positive");
         require(_fileSize <= MAX_FILE_SIZE, "File exceeds 100MB limit");
 
-        // Validate AES-GCM IV is exactly 24 hex characters (12 bytes)
+        // Validate AES-GCM IV 
         require(bytes(_encryptionIv).length == IV_LENGTH, "IV must be exactly 24 hex characters");
 
-        // Validate file hash is not zero (must be computed client-side)
+        // Validate file hash
         require(_fileHash != bytes32(0), "File hash cannot be zero");
 
         // Enforce per-wallet storage quota
@@ -185,34 +182,49 @@ contract FileStorage {
             totalStorageUsed[msg.sender] + _fileSize <= MAX_STORAGE_BYTES,
             "Storage quota exceeded (1GB max)"
         );
+    }
 
-        // Build the file record and push to the user's list
-        File memory newFile = File({
-            ipfsHashes: _ipfsHashes,
-            fileName: _fileName,
-            fileExtension: _fileExtension,
-            fileSize: _fileSize,
-            timestamp: block.timestamp,
-            encryptionIv: _encryptionIv,
-            fileHash: _fileHash,
-            version: 1,
-            exists: true
-        });
+    /**
+     * @notice Core upload logic with reduced stack usage via separated validation
+     */
+    function _upload(
+        string[3] memory _ipfsHashes,
+        string memory _fileName,
+        string memory _fileExtension,
+        uint256 _fileSize,
+        string memory _encryptionIv,
+        bytes32 _fileHash
+    ) internal {
+        _validateUploadInputs(_ipfsHashes, _fileName, _encryptionIv, _fileSize, _fileHash);
 
-        userFiles[msg.sender].push(newFile);
-        totalStorageUsed[msg.sender] += _fileSize;
+        {
+            File memory newFile = File({
+                ipfsHashes: _ipfsHashes,
+                fileName: _fileName,
+                fileExtension: _fileExtension,
+                fileSize: _fileSize,
+                timestamp: block.timestamp,
+                encryptionIv: _encryptionIv,
+                fileHash: _fileHash,
+                version: 1,
+                exists: true
+            });
 
-        uint256 newIndex = userFiles[msg.sender].length - 1;
+            userFiles[msg.sender].push(newFile);
+            totalStorageUsed[msg.sender] += _fileSize;
 
-        emit FileUploaded(
-            msg.sender,
-            newIndex,
-            _fileName,
-            _fileSize,
-            _fileExtension,
-            block.timestamp,
-            _fileHash
-        );
+            uint256 newIndex = userFiles[msg.sender].length - 1;
+
+            emit FileUploaded(
+                msg.sender,
+                newIndex,
+                _fileName,
+                _fileSize,
+                _fileExtension,
+                block.timestamp,
+                _fileHash
+            );
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -477,8 +489,7 @@ contract FileStorage {
     /**
      * @notice Get all files that other wallets have shared with the caller
      * @dev Returns parallel arrays: owner addresses, file indices, file structs,
-     *      and encrypted keys. Frontend should zip these arrays together.
-     *      Inactive (revoked) shares are filtered out automatically.
+     *      and encrypted keys. Inactive (revoked) shares are filtered out automatically.
      */
     function getFilesSharedWithMe() public view returns (
         address[] memory owners,
@@ -487,9 +498,20 @@ contract FileStorage {
         bytes[] memory encryptedKeys
     ) {
         ShareReference[] memory refs = sharedWithMe[msg.sender];
+        uint256 activeCount = _countActiveShares(refs);
 
-        // Count active shares first to size the return arrays
-        uint256 activeCount = 0;
+        owners = new address[](activeCount);
+        fileIndices = new uint256[](activeCount);
+        files = new File[](activeCount);
+        encryptedKeys = new bytes[](activeCount);
+
+        _populateSharedFiles(refs, owners, fileIndices, files, encryptedKeys);
+    }
+
+    /**
+     * @notice Count how many shared files are still active for the caller
+     */
+    function _countActiveShares(ShareReference[] memory refs) internal view returns (uint256 count) {
         for (uint256 i = 0; i < refs.length; i++) {
             ShareReference memory ref = refs[i];
             if (
@@ -497,15 +519,21 @@ contract FileStorage {
                 ref.fileIndex < userFiles[ref.owner].length &&
                 userFiles[ref.owner][ref.fileIndex].exists
             ) {
-                activeCount++;
+                count++;
             }
         }
+    }
 
-        owners = new address[](activeCount);
-        fileIndices = new uint256[](activeCount);
-        files = new File[](activeCount);
-        encryptedKeys = new bytes[](activeCount);
-
+    /**
+     * @notice Populate the shared files arrays for a given recipient
+     */
+    function _populateSharedFiles(
+        ShareReference[] memory refs,
+        address[] memory owners,
+        uint256[] memory fileIndices,
+        File[] memory files,
+        bytes[] memory encryptedKeys
+    ) internal view {
         uint256 j = 0;
         for (uint256 i = 0; i < refs.length; i++) {
             ShareReference memory ref = refs[i];
