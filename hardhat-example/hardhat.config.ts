@@ -4,30 +4,16 @@ import { configVariable, defineConfig } from "hardhat/config";
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
   solidity: {
-    version: "0.8.25",
+    version: "0.8.25", // keep whatever version you are currently using
     settings: {
-      viaIR: true,
+      viaIR: true, // <-- THIS IS THE MAGIC LINE
       optimizer: {
         enabled: true,
-        runs: 20000, // Increase runs to force more aggressive simplification
-        details: {
-          yul: true,
-          yulDetails: {
-            stackAllocation: true, // Explicitly tell it to optimize stack slots
-            optimizerSteps: "u", // Standard cleanup step
-          },
-        },
+        runs: 200,
       },
     },
   },
 
-  networks: {
-    sepolia: {
-      type: "http",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
-    },
-  },
   verify: {
     etherscan: {
       apiKey: configVariable("ETHERSCAN_API_KEY"),
