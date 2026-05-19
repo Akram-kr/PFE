@@ -56,6 +56,9 @@ export const DEAN_ROLE = keccak256(stringToBytes("DEAN_ROLE")) as `0x${string}`;
 export const RECTOR_ROLE = keccak256(
   stringToBytes("RECTOR_ROLE"),
 ) as `0x${string}`;
+export const COUNCIL_ROLE = keccak256(
+  stringToBytes("COUNCIL_ROLE"),
+) as `0x${string}`;
 export const DEFAULT_ADMIN_ROLE =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
