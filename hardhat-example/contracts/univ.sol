@@ -6,24 +6,9 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
- * @title  UniversityDiploma
+ * @title  UniversityDiploma (Monolithic Edition)
  * @author University of Blida 1 — PFE Project (DiploChain)
- * @notice Soulbound NFT (ERC-721) for high-security diploma issuance.
- *
- * Governance flow per batch:
- *   PROPOSED → SIGNED_BY_DEAN → SIGNED_BY_RECTOR → MINTED
- *   Any non-minted batch can be CANCELLED by admin at any time.
- *   Batches automatically expire after PROPOSAL_EXPIRY (7 days).
- *
- * Security properties (v2):
- *   - Non-transferable Soulbound tokens
- *   - Multi-sig: Admin proposes → Dean signs → Rector signs → Admin mints
- *   - Proposal expiry (7 days) — prevents stale batches
- *   - Matricule uniqueness — one diploma per student ID, ever
- *   - Full identity on-chain (incl. dateOfBirth, placeOfBirth)
- *   - Revocation requires a mandatory reason string
- *   - Public verificationCount per token — on-chain audit trail
- *   - getStudentDiplomas(wallet) — employer / student lookup
+ * @notice Soulbound NFT + On-Chain Enrollment + Grades Ledger + Multi-Sig Governance.
  */
 contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
 
@@ -33,86 +18,62 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
 
     uint256 public constant PROPOSAL_EXPIRY = 7 days;
     uint256 public constant MAX_BATCH_SIZE  = 300;
+    uint16  public constant PASS_GRADE = 1000;
+    uint16  public constant MAX_GRADE  = 2000;
 
     // =========================================================================
     // Roles
     // =========================================================================
 
-    bytes32 public constant ADMIN_ROLE  = keccak256("ADMIN_ROLE");
-    bytes32 public constant DEAN_ROLE   = keccak256("DEAN_ROLE");
-    bytes32 public constant RECTOR_ROLE = keccak256("RECTOR_ROLE");
+    bytes32 public constant ADMIN_ROLE     = keccak256("ADMIN_ROLE");
+    bytes32 public constant DEAN_ROLE      = keccak256("DEAN_ROLE");
+    bytes32 public constant RECTOR_ROLE    = keccak256("RECTOR_ROLE");
+    bytes32 public constant COUNCIL_ROLE   = keccak256("COUNCIL_ROLE");
+    bytes32 public constant PROFESSOR_ROLE = keccak256("PROFESSOR_ROLE"); // NEW: For grading
 
     // =========================================================================
     // Enumerations
     // =========================================================================
 
-    enum BatchStatus {
-        Proposed,        // 0 — submitted by admin, awaiting signatures
-        SignedByDean,    // 1 — dean approved, awaiting rector
-        SignedByRector,  // 2 — fully approved, ready to mint
-        Minted,          // 3 — tokens have been minted
-        Cancelled        // 4 — cancelled before minting
-    }
-
-    enum Specialty {
-        SIQ,     // 0 — Sécurité Informatique et Qualité
-        ISIL,    // 1 — Ingénierie des Systèmes d'Information et Logiciel
-        AI,      // 2 — Intelligence Artificielle
-        Reseau   // 3 — Réseaux Informatiques
-    }
-
-    enum Cycle {
-        L3,  // 0 — Licence (3 ans)
-        M2   // 1 — Master (2 ans)
-    }
-
-    enum Mention {
-        Passable,    // 0 — 10 ≤ moy < 12
-        AssezBien,   // 1 — 12 ≤ moy < 14
-        Bien,        // 2 — 14 ≤ moy < 16
-        TresBien     // 3 — 16 ≤ moy ≤ 20
-    }
+    enum BatchStatus { Proposed, Deliberated, SignedByDean, SignedByRector, Minted, Cancelled }
+    enum Specialty { SIQ, ISIL, AI, Reseau }
+    enum Cycle { L1, L2, L3, M1, M2 }
+    enum Mention { Passable, AssezBien, Bien, TresBien }
 
     // =========================================================================
     // Structs
     // =========================================================================
 
-    /**
-     * @notice Per-student entry submitted inside a proposed batch.
-     */
     struct StudentEntry {
         address   wallet;
         string    studentName;
         string    matricule;
-        string    dateOfBirth;    // e.g. "15/06/2001"
-        string    placeOfBirth;   // e.g. "Blida"
+        string    dateOfBirth;  
+        string    placeOfBirth; 
         string    metadataCID;
         bytes32   sha256Hash;
         Specialty specialty;
         Cycle     cycle;
-        Mention   mention;
+        uint16    moyenne;      
         uint16    graduationYear;
         string    department;
     }
 
-    /**
-     * @notice Batch moving through the approval pipeline.
-     */
     struct Batch {
         StudentEntry[] students;
         BatchStatus    status;
         address        proposer;
         uint256        proposedAt;
-        uint256        expiresAt;       // proposedAt + PROPOSAL_EXPIRY
+        uint256        expiresAt;        
+        uint256        deliberatedAt;
+        address        deliberatedBy;
         uint256        deanSignedAt;
         uint256        rectorSignedAt;
         string         description;
-        string         cancelReason;    // populated by cancelBatch()
+        string         cancelReason;     
+        string         deliberationNote; 
     }
 
-    /**
-     * @notice Full immutable on-chain record per minted diploma token.
-     */
     struct DiplomaRecord {
         string    studentName;
         string    matricule;
@@ -122,13 +83,27 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
         bytes32   sha256Hash;
         Specialty specialty;
         Cycle     cycle;
-        Mention   mention;
+        Mention   mention;        
+        uint16    moyenne;        
         uint16    graduationYear;
         string    department;
         uint256   batchId;
         uint256   mintedAt;
         bool      valid;
-        string    revocationReason;  // populated by revokeDiploma()
+        string    revocationReason; 
+    }
+
+    // NEW: Enrollment & Ledger Structs
+    struct AcademicModule {
+        string name;
+        uint8  coefficient;
+        bool   active;
+    }
+
+    struct StudentProfile {
+        bool adminValidated;
+        bool pedagoValidated;
+        bool active;
     }
 
     // =========================================================================
@@ -143,30 +118,36 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
     mapping(string  => bool)          private _matriculeUsed;
     mapping(address => uint256[])     private _studentTokens;
 
-    /// @notice How many times each token has been publicly verified.
-    mapping(uint256 => uint256) public verificationCount;
+    // NEW: Enrollment & Grades State
+    mapping(string => AcademicModule) public academicModules;
+    mapping(address => StudentProfile) public studentProfiles;
+    mapping(address => string[]) public studentRegisteredModules;
+    mapping(address => mapping(string => uint16)) public studentGrades;
+
+    uint256 public verificationCount;
 
     // =========================================================================
     // Events
     // =========================================================================
 
-    event BatchProposed(
-        uint256 indexed batchId,
-        address indexed proposer,
-        uint256         studentCount,
-        string          description,
-        uint256         expiresAt
-    );
+    event BatchProposed(uint256 indexed batchId, address indexed proposer, uint256 studentCount, string description, uint256 expiresAt);
+    event BatchDeliberated(uint256 indexed batchId, address indexed councilMember, uint256 timestamp, string note);
     event BatchSignedByDean(uint256 indexed batchId, address indexed dean, uint256 timestamp);
     event BatchSignedByRector(uint256 indexed batchId, address indexed rector, uint256 timestamp);
     event DiplomasMinted(uint256 indexed batchId, uint256[] tokenIds);
     event BatchCancelled(uint256 indexed batchId, address indexed cancelledBy, string reason);
     event DiplomaVerified(uint256 indexed tokenId, address indexed verifier, bool isAuthentic, uint256 count);
     event DiplomaRevoked(uint256 indexed tokenId, address indexed revokedBy, string reason, uint256 timestamp);
-    event DeanAssigned(address indexed dean, address indexed assignedBy);
-    event DeanRemoved(address indexed dean, address indexed removedBy);
-    event RectorAssigned(address indexed rector, address indexed assignedBy);
-    event RectorRemoved(address indexed rector, address indexed removedBy);
+    
+    // Role Events
+    event RoleAssigned(bytes32 indexed role, address indexed account, address indexed assignedBy);
+    event RoleRemoved(bytes32 indexed role, address indexed account, address indexed removedBy);
+
+    // Ledger Events
+    event StudentEnrolled(address indexed student, string level);
+    event ModuleAdded(string code, string name, uint8 coeff);
+    event ModuleRegistered(address indexed student, string code);
+    event GradeSubmitted(address indexed student, string moduleCode, uint16 grade, address professor);
 
     // =========================================================================
     // Errors
@@ -187,19 +168,23 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
     error Batch_MissingHash(uint256 index);
     error Batch_MissingDepartment(uint256 index);
     error Batch_InvalidGraduationYear(uint256 index);
+    error Batch_InvalidMoyenne(uint256 index, uint16 moyenne, uint16 onChainMoyenne);
+    error Batch_StudentFailed(uint256 index, uint16 moyenne);
     error Batch_MatriculeAlreadyMinted(string matricule);
     error Token_DoesNotExist(uint256 tokenId);
     error Token_AlreadyRevoked(uint256 tokenId);
     error Token_MissingRevocationReason();
 
+    // Ledger Errors
+    error Enrollment_NotActive();
+    error Enrollment_NotValidated();
+    error Ledger_ModuleDoesNotExist();
+    error Ledger_InvalidGrade();
+
     // =========================================================================
     // Constructor
     // =========================================================================
 
-    /**
-     * @param admin Address granted ADMIN_ROLE. Dean and Rector are assigned
-     *              afterwards via assignDean() / assignRector().
-     */
     constructor(address admin) ERC721("UniversityDiploma", "UDIP") {
         if (admin == address(0)) revert Role_ZeroAddress();
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -210,50 +195,98 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
     // Role Management (admin-only)
     // =========================================================================
 
-    function assignDean(address dean) external onlyRole(ADMIN_ROLE) {
-        if (dean == address(0)) revert Role_ZeroAddress();
-        _grantRole(DEAN_ROLE, dean);
-        emit DeanAssigned(dean, msg.sender);
+    function assignRole(bytes32 role, address account) external onlyRole(ADMIN_ROLE) {
+        if (account == address(0)) revert Role_ZeroAddress();
+        _grantRole(role, account);
+        emit RoleAssigned(role, account, msg.sender);
     }
 
-    function removeDean(address dean) external onlyRole(ADMIN_ROLE) {
-        _revokeRole(DEAN_ROLE, dean);
-        emit DeanRemoved(dean, msg.sender);
-    }
-
-    function assignRector(address rector) external onlyRole(ADMIN_ROLE) {
-        if (rector == address(0)) revert Role_ZeroAddress();
-        _grantRole(RECTOR_ROLE, rector);
-        emit RectorAssigned(rector, msg.sender);
-    }
-
-    function removeRector(address rector) external onlyRole(ADMIN_ROLE) {
-        _revokeRole(RECTOR_ROLE, rector);
-        emit RectorRemoved(rector, msg.sender);
+    function removeRole(bytes32 role, address account) external onlyRole(ADMIN_ROLE) {
+        _revokeRole(role, account);
+        emit RoleRemoved(role, account, msg.sender);
     }
 
     // =========================================================================
-    // Soulbound: block all transfers
+    // PART 1: Enrollment & Grades Ledger (Scolarité)
     // =========================================================================
 
-    function _update(
-        address to,
-        uint256 tokenId,
-        address auth
-    ) internal override returns (address) {
+    function enrollStudentAdmin(address student) external onlyRole(ADMIN_ROLE) {
+        studentProfiles[student].adminValidated = true;
+        studentProfiles[student].active = true;
+        emit StudentEnrolled(student, "Admin");
+    }
+
+    function enrollStudentPedago(address student) external onlyRole(ADMIN_ROLE) {
+        studentProfiles[student].pedagoValidated = true;
+        emit StudentEnrolled(student, "Pedago");
+    }
+
+    function addAcademicModule(string calldata code, string calldata name, uint8 coeff) external onlyRole(ADMIN_ROLE) {
+        academicModules[code] = AcademicModule({
+            name: name,
+            coefficient: coeff,
+            active: true
+        });
+        emit ModuleAdded(code, name, coeff);
+    }
+
+    function registerForModule(string calldata code) external {
+        StudentProfile storage p = studentProfiles[msg.sender];
+        if (!p.active) revert Enrollment_NotActive();
+        if (!p.adminValidated || !p.pedagoValidated) revert Enrollment_NotValidated();
+        if (!academicModules[code].active) revert Ledger_ModuleDoesNotExist();
+
+        studentRegisteredModules[msg.sender].push(code);
+        emit ModuleRegistered(msg.sender, code);
+    }
+
+    function setGrade(address student, string calldata code, uint16 grade) external onlyRole(PROFESSOR_ROLE) {
+        if (grade > MAX_GRADE) revert Ledger_InvalidGrade();
+        studentGrades[student][code] = grade;
+        emit GradeSubmitted(student, code, grade, msg.sender);
+    }
+
+    function calculateOnChainMoyenne(address student) public view returns (uint16) {
+        string[] memory mods = studentRegisteredModules[student];
+        if (mods.length == 0) return 0;
+
+        uint256 totalPoints = 0;
+        uint256 totalCoeffs = 0;
+
+        for (uint256 i = 0; i < mods.length; i++) {
+            string memory code = mods[i];
+            uint8 coeff = academicModules[code].coefficient;
+            uint16 grade = studentGrades[student][code];
+
+            totalPoints += (uint256(grade) * coeff);
+            totalCoeffs += coeff;
+        }
+
+        if (totalCoeffs == 0) return 0;
+        return uint16(totalPoints / totalCoeffs);
+    }
+
+    // =========================================================================
+    // PART 2: Soulbound: block all transfers
+    // =========================================================================
+
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);
         if (from != address(0)) revert SBT_TransferNotAllowed();
         return super._update(to, tokenId, auth);
     }
 
+    function _mentionFromMoyenne(uint16 moyenne) internal pure returns (Mention) {
+        if (moyenne < 1200) return Mention.Passable;
+        if (moyenne < 1400) return Mention.AssezBien;
+        if (moyenne < 1600) return Mention.Bien;
+        return Mention.TresBien;
+    }
+
     // =========================================================================
-    // Multi-Sig Batch Governance
+    // PART 3: Multi-Sig Batch Governance (On-Chain Enforced)
     // =========================================================================
 
-    /**
-     * @notice Admin proposes a new batch of diplomas for approval.
-     *         The batch expires after PROPOSAL_EXPIRY (7 days).
-     */
     function proposeBatch(
         StudentEntry[] calldata students,
         string calldata description
@@ -262,7 +295,6 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
         if (students.length > MAX_BATCH_SIZE)    revert Batch_TooLarge(students.length, MAX_BATCH_SIZE);
 
         batchId = _nextBatchId++;
-
         Batch storage batch = _batches[batchId];
         batch.status      = BatchStatus.Proposed;
         batch.proposer    = msg.sender;
@@ -278,8 +310,12 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
             if (bytes(s.metadataCID).length == 0)        revert Batch_MissingCID(i);
             if (s.sha256Hash == bytes32(0))              revert Batch_MissingHash(i);
             if (bytes(s.department).length == 0)         revert Batch_MissingDepartment(i);
-            if (s.graduationYear < 2000 || s.graduationYear > 2100)
-                                                         revert Batch_InvalidGraduationYear(i);
+            if (s.graduationYear < 2000 || s.graduationYear > 2100) revert Batch_InvalidGraduationYear(i);
+
+            // INTEGRATION: Ensure the admin's proposed moyenne matches the on-chain ledger!
+            uint16 actualMoyenne = calculateOnChainMoyenne(s.wallet);
+            if (s.moyenne != actualMoyenne) revert Batch_InvalidMoyenne(i, s.moyenne, actualMoyenne);
+
             batch.students.push(s);
             unchecked { ++i; }
         }
@@ -287,43 +323,48 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
         emit BatchProposed(batchId, msg.sender, students.length, description, batch.expiresAt);
     }
 
-    /**
-     * @notice Dean signs a proposed batch. Reverts if the batch has expired.
-     */
-    function signByDean(uint256 batchId) external onlyRole(DEAN_ROLE) {
+    function deliberate(uint256 batchId, string calldata note) external onlyRole(COUNCIL_ROLE) {
         Batch storage batch = _batches[batchId];
         if (block.timestamp > batch.expiresAt)    revert Batch_Expired(batchId);
-        if (batch.status != BatchStatus.Proposed)
-            revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.Proposed);
+        if (batch.status != BatchStatus.Proposed) revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.Proposed);
+
+        uint256 count = batch.students.length;
+        for (uint256 i = 0; i < count; ) {
+            uint16 m = batch.students[i].moyenne;
+            if (m < PASS_GRADE) revert Batch_StudentFailed(i, m);
+            unchecked { ++i; }
+        }
+
+        batch.status           = BatchStatus.Deliberated;
+        batch.deliberatedAt    = block.timestamp;
+        batch.deliberatedBy    = msg.sender;
+        batch.deliberationNote = note;
+
+        emit BatchDeliberated(batchId, msg.sender, block.timestamp, note);
+    }
+
+    function signByDean(uint256 batchId) external onlyRole(DEAN_ROLE) {
+        Batch storage batch = _batches[batchId];
+        if (block.timestamp > batch.expiresAt)        revert Batch_Expired(batchId);
+        if (batch.status != BatchStatus.Deliberated)  revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.Deliberated);
         batch.status       = BatchStatus.SignedByDean;
         batch.deanSignedAt = block.timestamp;
         emit BatchSignedByDean(batchId, msg.sender, block.timestamp);
     }
 
-    /**
-     * @notice Rector signs a dean-approved batch. Reverts if the batch has expired.
-     */
     function signByRector(uint256 batchId) external onlyRole(RECTOR_ROLE) {
         Batch storage batch = _batches[batchId];
         if (block.timestamp > batch.expiresAt)        revert Batch_Expired(batchId);
-        if (batch.status != BatchStatus.SignedByDean)
-            revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.SignedByDean);
+        if (batch.status != BatchStatus.SignedByDean) revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.SignedByDean);
         batch.status         = BatchStatus.SignedByRector;
         batch.rectorSignedAt = block.timestamp;
         emit BatchSignedByRector(batchId, msg.sender, block.timestamp);
     }
 
-    /**
-     * @notice Admin mints all diplomas in a fully-approved batch.
-     *         Reverts if the batch has expired or any matricule is already minted.
-     */
-    function mintBatch(
-        uint256 batchId
-    ) external onlyRole(ADMIN_ROLE) nonReentrant returns (uint256[] memory tokenIds) {
+    function mintBatch(uint256 batchId) external onlyRole(ADMIN_ROLE) nonReentrant returns (uint256[] memory tokenIds) {
         Batch storage batch = _batches[batchId];
         if (block.timestamp > batch.expiresAt)             revert Batch_Expired(batchId);
-        if (batch.status != BatchStatus.SignedByRector)
-            revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.SignedByRector);
+        if (batch.status != BatchStatus.SignedByRector)    revert Batch_InvalidStatus(batchId, batch.status, BatchStatus.SignedByRector);
 
         uint256 count = batch.students.length;
         tokenIds = new uint256[](count);
@@ -344,7 +385,8 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
                 sha256Hash       : s.sha256Hash,
                 specialty        : s.specialty,
                 cycle            : s.cycle,
-                mention          : s.mention,
+                mention          : _mentionFromMoyenne(s.moyenne),
+                moyenne          : s.moyenne,
                 graduationYear   : s.graduationYear,
                 department       : s.department,
                 batchId          : batchId,
@@ -363,134 +405,59 @@ contract UniversityDiploma is ERC721, AccessControl, ReentrancyGuard {
         emit DiplomasMinted(batchId, tokenIds);
     }
 
-    /**
-     * @notice Admin cancels a batch that has not yet been minted.
-     *         A non-empty reason is mandatory for the audit trail.
-     *         Works on Proposed, SignedByDean, SignedByRector — and even expired batches.
-     */
-    function cancelBatch(
-        uint256 batchId,
-        string calldata reason
-    ) external onlyRole(ADMIN_ROLE) {
+    function cancelBatch(uint256 batchId, string calldata reason) external onlyRole(ADMIN_ROLE) {
         Batch storage batch = _batches[batchId];
         BatchStatus st = batch.status;
-        if (st == BatchStatus.Minted || st == BatchStatus.Cancelled)
-            revert Batch_CannotCancel(batchId);
-        if (bytes(reason).length == 0)
-            revert Batch_MissingCancelReason();
+        if (st == BatchStatus.Minted || st == BatchStatus.Cancelled) revert Batch_CannotCancel(batchId);
+        if (bytes(reason).length == 0) revert Batch_MissingCancelReason();
+        
         batch.status       = BatchStatus.Cancelled;
         batch.cancelReason = reason;
         emit BatchCancelled(batchId, msg.sender, reason);
     }
 
     // =========================================================================
-    // Revocation
+    // Revocation & Verification
     // =========================================================================
 
-    /**
-     * @notice Admin revokes a diploma. A non-empty reason is required.
-     *         The token stays in the student's wallet but is permanently marked invalid.
-     */
-    function revokeDiploma(
-        uint256 tokenId,
-        string calldata reason
-    ) external onlyRole(ADMIN_ROLE) {
+    function revokeDiploma(uint256 tokenId, string calldata reason) external onlyRole(ADMIN_ROLE) {
         if (_ownerOf(tokenId) == address(0))   revert Token_DoesNotExist(tokenId);
         if (!_diplomaRecords[tokenId].valid)   revert Token_AlreadyRevoked(tokenId);
         if (bytes(reason).length == 0)         revert Token_MissingRevocationReason();
 
-        _diplomaRecords[tokenId].valid             = false;
-        _diplomaRecords[tokenId].revocationReason  = reason;
+        _diplomaRecords[tokenId].valid            = false;
+        _diplomaRecords[tokenId].revocationReason = reason;
 
         emit DiplomaRevoked(tokenId, msg.sender, reason, block.timestamp);
     }
 
-    // =========================================================================
-    // Public Verification
-    // =========================================================================
-
-    /**
-     * @notice Verify the authenticity of a diploma and increment its verificationCount.
-     *         Returns false if the diploma is revoked or the PDF hash mismatches.
-     */
-    function verifyDiploma(
-        uint256 tokenId,
-        bytes32 pdfHash
-    ) external returns (bool isAuthentic) {
+    function verifyDiploma(uint256 tokenId, bytes32 pdfHash) external returns (bool isAuthentic) {
         if (_ownerOf(tokenId) == address(0)) revert Token_DoesNotExist(tokenId);
 
         DiplomaRecord storage rec = _diplomaRecords[tokenId];
         isAuthentic = rec.valid && (rec.sha256Hash == pdfHash);
 
-        verificationCount[tokenId] += 1;
-        emit DiplomaVerified(tokenId, msg.sender, isAuthentic, verificationCount[tokenId]);
+        verificationCount += 1;
+        emit DiplomaVerified(tokenId, msg.sender, isAuthentic, verificationCount);
     }
 
     // =========================================================================
     // View Functions
     // =========================================================================
 
-    /**
-     * @notice Returns all token IDs held by a student wallet.
-     */
-    function getStudentDiplomas(address student) external view returns (uint256[] memory) {
-        return _studentTokens[student];
-    }
-
-    /**
-     * @notice Returns true if a matricule already has a minted diploma.
-     */
-    function isMatriculeUsed(string calldata matricule) external view returns (bool) {
-        return _matriculeUsed[matricule];
-    }
-
-    /**
-     * @notice Returns the full on-chain record for a given token.
-     */
+    function getStudentDiplomas(address student) external view returns (uint256[] memory) { return _studentTokens[student]; }
+    function isMatriculeUsed(string calldata matricule) external view returns (bool) { return _matriculeUsed[matricule]; }
     function getDiplomaRecord(uint256 tokenId) external view returns (DiplomaRecord memory) {
         if (_ownerOf(tokenId) == address(0)) revert Token_DoesNotExist(tokenId);
         return _diplomaRecords[tokenId];
     }
-
-    /**
-     * @notice Returns whether a diploma is still valid (not revoked).
-     */
-    function isDiplomaValid(uint256 tokenId) external view returns (bool) {
-        if (_ownerOf(tokenId) == address(0)) revert Token_DoesNotExist(tokenId);
-        return _diplomaRecords[tokenId].valid;
-    }
-
-    function getBatchStatus(uint256 batchId) external view returns (BatchStatus) {
-        return _batches[batchId].status;
-    }
-
-    function getBatchStudentCount(uint256 batchId) external view returns (uint256) {
-        return _batches[batchId].students.length;
-    }
-
-    function getBatchDescription(uint256 batchId) external view returns (string memory) {
-        return _batches[batchId].description;
-    }
-
-    function getBatchExpiry(uint256 batchId) external view returns (uint256) {
-        return _batches[batchId].expiresAt;
-    }
-
-    function getBatchCancelReason(uint256 batchId) external view returns (string memory) {
-        return _batches[batchId].cancelReason;
-    }
-
-    function nextTokenId() external view returns (uint256) { return _nextTokenId; }
-    function nextBatchId() external view returns (uint256) { return _nextBatchId; }
-
+    
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         if (_ownerOf(tokenId) == address(0)) revert Token_DoesNotExist(tokenId);
         return string(abi.encodePacked("ipfs://", _diplomaRecords[tokenId].metadataCID));
     }
 
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(ERC721, AccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }
