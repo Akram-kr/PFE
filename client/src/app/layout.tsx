@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Providers } from "./providers";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { Providers } from "@/components/Providers";
+import { Navbar } from "@/components/Navbar";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
-  title: "DecentraVault — Encrypted Decentralized Storage",
+  title: "DiploChain — Université de Blida 1",
   description:
-    "End-to-end encrypted, sharded, decentralized file storage on the blockchain.",
+    "Système de délivrance et vérification de diplômes sécurisés par blockchain NFT.",
 };
 
 export default function RootLayout({
@@ -14,21 +21,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>
-        <Providers>{children}</Providers>
+    <html lang="fr" className={inter.variable}>
+      <body className="min-h-screen flex flex-col">
+        <Providers>
+          <Navbar />
+          <main className="flex-1">{children}</main>
+          <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">
+            © {new Date().getFullYear()} Université de Blida 1 — DiploChain •{" "}
+            Diplômes Soulbound NFT sur Ethereum
+          </footer>
+        </Providers>
       </body>
     </html>
   );
