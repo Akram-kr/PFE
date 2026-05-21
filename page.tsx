@@ -37,10 +37,15 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function AdminPage() {
   const { isConnected } = useAccount();
-  const { role, isLoading, address } = useRole();
   const [showForm, setShowForm] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const { role, isLoading } = useRole();
+  const hasAdminAccess =
+    role === "admin" || role === "dean" || role === "rector";
+  const canManageRoles = role === "admin";
+  const canProposeBatch = role === "admin";
 
   const { data: nextBatchId, refetch } = useReadContract({
     ...diplomaContract,
@@ -52,9 +57,8 @@ export default function AdminPage() {
     functionName: "nextTokenId",
   });
 
-  const isAdmin = role === "admin";
-  const hasAnyRole = isAdmin || role === "dean" || role === "rector";
-  const roles = hasAnyRole ? [role] : [];
+  const roles = hasAdminAccess ? [role] : [];
+
   const totalBatches = nextBatchId ? Number(nextBatchId) : 0;
   const totalTokens = nextTokenId ? Number(nextTokenId) : 0;
   const batchIds = Array.from({ length: totalBatches }, (_, i) => BigInt(i));
@@ -96,39 +100,6 @@ export default function AdminPage() {
     );
   }
 
-  if (!hasAnyRole) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-400">
-          <AlertCircle className="h-8 w-8" />
-        </div>
-        <div className="max-w-md w-full">
-          <h1 className="mb-2 text-xl font-bold text-slate-800">
-            Accès non autorisé
-          </h1>
-          <p className="text-slate-500 text-sm">
-            Ce wallet ne possède aucun rôle (Admin, Doyen, Recteur) sur le
-            contrat.
-          </p>
-          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-xs font-mono text-slate-500 space-y-1">
-            <p>
-              <span className="text-slate-400">wallet </span>
-              {address}
-            </p>
-            <p>
-              <span className="text-slate-400">contrat </span>
-              {CONTRACT_ADDRESS}
-            </p>
-            <p>
-              <span className="text-slate-400">rôle </span>
-              {role}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">
       {/* Header */}
@@ -163,7 +134,7 @@ export default function AdminPage() {
       </div>
 
       {/* Manage roles (admin only) */}
-      {role && (
+      {canManageRoles && (
         <div className="card">
           <button
             onClick={() => setShowRoles((s) => !s)}
@@ -186,7 +157,7 @@ export default function AdminPage() {
       )}
 
       {/* Propose batch (admin only) */}
-      {role && (
+      {canProposeBatch && (
         <div className="card">
           <button
             onClick={() => setShowForm((s) => !s)}

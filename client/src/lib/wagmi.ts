@@ -16,7 +16,7 @@ export const wagmiConfig = createConfig({
 /** UniversityDiploma contract address */
 export const CONTRACT_ADDRESS =
   (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`) ??
-  "0x0000000000000000000000000000000000000000";
+  "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
 
 /** FileStorage contract address — optional, enables encrypted sharded uploads */
 export const FILE_STORAGE_ADDRESS =

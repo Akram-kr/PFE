@@ -25,6 +25,11 @@ import {
   ADMIN_ROLE,
   COUNCIL_ROLE,
   formatTimestamp,
+  publicClient,
+  formatMoyenne,
+  PROGRESSION_LABELS,
+  PROGRESSION_COLORS,
+  parseMoyenne,
 } from "@/lib/contract";
 import { cn } from "@/lib/utils";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
@@ -34,6 +39,18 @@ interface BatchCardProps {
   batchId: bigint;
   onUpdate?: () => void;
 }
+
+type StudentStruct = {
+  studentName?: string;
+  matricule?: string;
+  baseMoyenne?: number | bigint;
+};
+
+type PVStruct = {
+  baseMoyenne?: number | bigint;
+  finalMoyenne?: number | bigint;
+  status?: number | bigint;
+};
 
 export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
   const { address } = useAccount();
@@ -115,6 +132,10 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
 
   const [delibNote, setDelibNote] = useState("");
   const [showDelibForm, setShowDelibForm] = useState(false);
+  const [pvRows, setPvRows] = useState<{ idx: number; student: StudentStruct; pv: PVStruct }[]>([]);
+  const [rachatsState, setRachatsState] = useState<
+    Record<number, { bumped: string; reason: string }>
+  >({});
 
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -132,6 +153,46 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
     }
   }, [isSuccess, refetchStatus, onUpdate]);
 
+  // Fetch PV and student info for PV table and rachat panel
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!studentCount) return;
+        const n = Number(studentCount);
+        const calls = [] as Promise<unknown>[];
+        for (let i = 0; i < n; i++) {
+          calls.push(
+            publicClient.readContract({
+              ...diplomaContract,
+              functionName: "getBatchStudent",
+              args: [batchId, BigInt(i)],
+            }),
+          );
+        }
+        const students = await Promise.all(calls);
+        const pvCalls = [] as Promise<unknown>[];
+        for (let i = 0; i < n; i++)
+          pvCalls.push(
+            publicClient.readContract({
+              ...diplomaContract,
+              functionName: "getStudentPV",
+              args: [batchId, BigInt(i)],
+            }),
+          );
+        const pvs = await Promise.all(pvCalls);
+        if (!mounted) return;
+        const merged = students.map((s: unknown, idx: number) => ({ idx, student: s as StudentStruct, pv: pvs[idx] as PVStruct }));
+        setPvRows(merged);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [studentCount, batchId]);
+
   const loading = isPending || isConfirming;
   const statusNum = status !== undefined ? Number(status) : undefined;
   // 0 Proposed | 1 Deliberated | 2 SignedByDean | 3 SignedByRector | 4 Minted | 5 Cancelled
@@ -148,18 +209,30 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
   const canDeliberate = isCouncil && statusNum === 0 && !isExpired;
   const canSignDean = isDean && statusNum === 1 && !isExpired;
   const canSignRector = isRector && statusNum === 2 && !isExpired;
-  const canMint = isAdmin && statusNum === 3 && !isExpired;
+  const canFinalize = isAdmin && statusNum === 3 && !isExpired;
   const canCancel = isAdmin && !isMinted && !isCancelled;
 
-  const handleAction = (fn: "signByDean" | "signByRector" | "mintBatch") => {
+  const handleAction = (
+    fn: "signByDean" | "signByRector" | "finalizeBatch",
+  ) => {
     writeContract({ ...diplomaContract, functionName: fn, args: [batchId] });
   };
 
   const handleDeliberate = () => {
-    writeContract({
+    // Build rachats array: include entries where reason is present and bumped is valid
+    const rachats: { studentIndex: bigint; bumpedMoyenne: number; reason: string }[] = [];
+    for (const [idxStr, v] of Object.entries(rachatsState)) {
+      const idx = Number(idxStr);
+      const bumped = parseMoyenne(v.bumped);
+      if (!v.reason?.trim()) continue;
+      if (Number.isNaN(bumped)) continue;
+      rachats.push({ studentIndex: BigInt(idx), bumpedMoyenne: bumped, reason: v.reason.trim() });
+    }
+
+    (writeContract as any)({
       ...diplomaContract,
       functionName: "deliberate",
-      args: [batchId, delibNote.trim()],
+      args: [batchId, rachats, delibNote.trim()],
     });
   };
 
@@ -257,16 +330,119 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
           )}
 
         {canDeliberate && showDelibForm && (
-          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-            <label className="text-xs font-semibold text-indigo-800">
-              Note du jury (optionnel)
-            </label>
-            <textarea
-              className="input min-h-[60px] resize-none text-xs"
-              placeholder="ex: Jury réuni le 15/06/2024. Tous les étudiants ont été validés à l'unanimité."
-              value={delibNote}
-              onChange={(e) => setDelibNote(e.target.value)}
-            />
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-3">
+            <div className="text-sm font-semibold text-indigo-800">
+              Procès-verbal & Rachats
+            </div>
+            <p className="text-xs text-indigo-700">
+              Complétez les rachats (bump de moyenne) si nécessaire. Laissez
+              vide si aucun rachat.
+            </p>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-600">
+                    <th className="p-2">#</th>
+                    <th className="p-2">Étudiant</th>
+                    <th className="p-2">Base</th>
+                    <th className="p-2">Final</th>
+                    <th className="p-2">Progression</th>
+                    <th className="p-2">Rachat (moy.)</th>
+                    <th className="p-2">Motif</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pvRows.length > 0 ? (
+                    pvRows.map((r) => {
+                      const idx = r.idx;
+                      const studentName = r.student.studentName ?? "—";
+                      const base =
+                        r.pv.baseMoyenne ?? r.student.baseMoyenne ?? 0;
+                      const finalM = r.pv.finalMoyenne ?? 0;
+                      const status = Number(r.pv.status ?? 0);
+                      const existing = rachatsState[idx] || {
+                        bumped: "",
+                        reason: "",
+                      };
+                      return (
+                        <tr key={idx} className="align-top border-t">
+                          <td className="p-2 align-top">{idx + 1}</td>
+                          <td className="p-2 align-top">{studentName}</td>
+                          <td className="p-2 font-mono">
+                            {formatMoyenne(base)}
+                          </td>
+                          <td className="p-2 font-mono">
+                            {formatMoyenne(finalM)}
+                          </td>
+                          <td className="p-2">
+                            <span
+                              className={cn(
+                                "rounded px-2 py-0.5 text-[11px] font-semibold",
+                                PROGRESSION_COLORS[status],
+                              )}
+                            >
+                              {PROGRESSION_LABELS[status]}
+                            </span>
+                          </td>
+                          <td className="p-2">
+                            <input
+                              className="input input-sm w-20 font-mono"
+                              placeholder="—"
+                              value={existing.bumped}
+                              onChange={(e) =>
+                                setRachatsState((s) => ({
+                                  ...s,
+                                  [idx]: {
+                                    ...(s[idx] || { bumped: "", reason: "" }),
+                                    bumped: e.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              className="input input-sm"
+                              placeholder="Motif du rachat"
+                              value={existing.reason}
+                              onChange={(e) =>
+                                setRachatsState((s) => ({
+                                  ...s,
+                                  [idx]: {
+                                    ...(s[idx] || { bumped: "", reason: "" }),
+                                    reason: e.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="p-2 text-xs text-slate-500">
+                        Chargement des PV…
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-indigo-800">
+                Note du jury (optionnel)
+              </label>
+              <textarea
+                className="input min-h-[60px] resize-none text-xs"
+                placeholder="ex: Jury réuni le 15/06/2024. Tous les étudiants ont été validés à l'unanimité."
+                value={delibNote}
+                onChange={(e) => setDelibNote(e.target.value)}
+              />
+            </div>
+
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
@@ -335,18 +511,18 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
               Signer (Recteur)
             </button>
           )}
-          {canMint && (
+          {canFinalize && (
             <button
               className="btn-primary text-xs bg-green-700 hover:bg-green-800"
               disabled={loading}
-              onClick={() => handleAction("mintBatch")}
+              onClick={() => handleAction("finalizeBatch")}
             >
               {loading ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <CheckCircle className="h-3 w-3" />
               )}
-              Frapper les diplômes
+              Finaliser le lot
             </button>
           )}
           {isMinted && (
@@ -401,8 +577,8 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
             </div>
 
             <div>
-              <label className="label">
-                Motif d'annulation <span className="text-red-500">*</span>
+                <label className="label">
+                Motif d&apos;annulation <span className="text-red-500">*</span>
               </label>
               <textarea
                 className="input min-h-[80px] resize-none"

@@ -63,9 +63,26 @@ interface StudentRow {
   metadataCID: string;
   sha256Hash: string;
   status: "idle" | "uploading" | "ready" | "error";
+  /** UEs (Unité d'Enseignement) with subjects */
+  ues: UE[];
 }
 
 type SubmitStep = "idle" | "registering" | "proposing";
+
+interface Subject {
+  id: string;
+  name: string;
+  cc: number | null; // Contrôle continu (0-20)
+  exam: number | null; // Examen (0-20)
+  coef: number; // coefficient weight
+  credits: number; // ECTS-like credits
+}
+
+interface UE {
+  id: string;
+  title: string;
+  subjects: Subject[];
+}
 
 const emptyRow = (): StudentRow => ({
   id: crypto.randomUUID(),
@@ -86,6 +103,22 @@ const emptyRow = (): StudentRow => ({
   metadataCID: "",
   sha256Hash: "",
   status: "idle",
+  ues: [
+    {
+      id: crypto.randomUUID(),
+      title: "UE 1",
+      subjects: [
+        {
+          id: crypto.randomUUID(),
+          name: "Matière 1",
+          cc: null,
+          exam: null,
+          coef: 1,
+          credits: 3,
+        },
+      ],
+    },
+  ],
 });
 
 interface Props {
@@ -100,6 +133,8 @@ export function ProposeBatchForm({ onSuccess }: Props) {
   const [rows, setRows] = useState<StudentRow[]>([emptyRow()]);
   const [globalError, setGlobalError] = useState("");
   const [submitStep, setSubmitStep] = useState<SubmitStep>("idle");
+  // Per-batch CC weight (0..1) used for live compensation preview
+  const [batchCcWeight, setBatchCcWeight] = useState<number>(0.4);
 
   /** Cached AES-GCM key derived from MetaMask signature — never leaves the browser */
   const encKeyRef = useRef<CryptoKey | null>(null);
@@ -134,6 +169,126 @@ export function ProposeBatchForm({ onSuccess }: Props) {
 
   const update = (id: string, patch: Partial<StudentRow>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  // UE / Subject helpers
+  const addUE = (rowId: string) =>
+    update(rowId, {
+      ues: [
+        ...rows.find((r) => r.id === rowId)!.ues,
+        {
+          id: crypto.randomUUID(),
+          title: `UE ${Date.now() % 1000}`,
+          subjects: [],
+        },
+      ],
+    });
+
+  const removeUE = (rowId: string, ueId: string) =>
+    update(rowId, {
+      ues: rows.find((r) => r.id === rowId)!.ues.filter((u) => u.id !== ueId),
+    });
+
+  const addSubject = (rowId: string, ueId: string) =>
+    update(rowId, {
+      ues: rows
+        .find((r) => r.id === rowId)!
+        .ues.map((u) =>
+          u.id === ueId
+            ? {
+                ...u,
+                subjects: [
+                  ...u.subjects,
+                  {
+                    id: crypto.randomUUID(),
+                    name: "Nouvelle matière",
+                    cc: null,
+                    exam: null,
+                    coef: 1,
+                    credits: 3,
+                  },
+                ],
+              }
+            : u,
+        ),
+    });
+
+  const removeSubject = (rowId: string, ueId: string, subId: string) =>
+    update(rowId, {
+      ues: rows
+        .find((r) => r.id === rowId)!
+        .ues.map((u) =>
+          u.id === ueId
+            ? { ...u, subjects: u.subjects.filter((s) => s.id !== subId) }
+            : u,
+        ),
+    });
+
+  const updateSubject = (
+    rowId: string,
+    ueId: string,
+    subId: string,
+    patch: Partial<Subject>,
+  ) =>
+    update(rowId, {
+      ues: rows
+        .find((r) => r.id === rowId)!
+        .ues.map((u) =>
+          u.id === ueId
+            ? {
+                ...u,
+                subjects: u.subjects.map((s) =>
+                  s.id === subId ? { ...s, ...patch } : s,
+                ),
+              }
+            : u,
+        ),
+    });
+
+  // Compute preview grades using batchCcWeight (0..1)
+  const computeStudentPreview = (row: StudentRow) => {
+    const ueResults = row.ues.map((ue) => {
+      let totalCoef = 0;
+      let weightedSum = 0;
+      ue.subjects.forEach((s) => {
+        const cc = s.cc ?? 0;
+        const exam = s.exam ?? 0;
+        // Input cc/exam are 0..20; compute weighted final using batchCcWeight (0..1)
+        const subjScore = cc * batchCcWeight + exam * (1 - batchCcWeight);
+        totalCoef += s.coef;
+        weightedSum += subjScore * s.coef;
+      });
+      const ueAvg = totalCoef > 0 ? weightedSum / totalCoef : null;
+      return { ueTitle: ue.title, ueAvg };
+    });
+    const validUeAverages = ueResults
+      .map((u) => u.ueAvg)
+      .filter((v) => v !== null) as number[];
+    const overall = validUeAverages.length
+      ? validUeAverages.reduce((a, b) => a + b, 0) / validUeAverages.length
+      : null;
+    return { ueResults, overall };
+  };
+
+  // Build a simple Merkle-like root placeholder by hashing concatenated leaves.
+  // Proper Merkle tree construction can be added later; this produces a deterministic bytes32-like hex.
+  const computeGradeTreeRoot = (row: StudentRow): `0x${string}` => {
+    // Each leaf: keccak256(ueTitle + subjectName + cc*100 + exam*100)
+    const leaves: string[] = [];
+    row.ues.forEach((ue) => {
+      ue.subjects.forEach((s) => {
+        const cc = Math.round((s.cc ?? 0) * 100);
+        const exam = Math.round((s.exam ?? 0) * 100);
+        const leaf = `${ue.title}|${s.name}|${cc}|${exam}`;
+        leaves.push(leaf);
+      });
+    });
+    const concatenated = leaves.join("||") || row.sha256Hash || "";
+    // For now return the file hash as a stable placeholder; a real Merkle root requires async hashing.
+    return (
+      (row.sha256Hash as `0x${string}`) ||
+      (("0x" + "0".repeat(64)) as `0x${string}`)
+    );
+  };
 
   const addRow = () => setRows((rs) => [...rs, emptyRow()]);
   const removeRow = (id: string) =>
@@ -221,6 +376,18 @@ export function ProposeBatchForm({ onSuccess }: Props) {
           contractAddress: diplomaContract.address,
         };
 
+        // Include UE/subject breakdown so off-chain grade trees can be rebuilt for verification
+        metadata.ues = row.ues.map((ue) => ({
+          title: ue.title,
+          subjects: ue.subjects.map((s) => ({
+            name: s.name,
+            cc: s.cc,
+            exam: s.exam,
+            coef: s.coef,
+            credits: s.credits,
+          })),
+        }));
+
         if (shardCIDs) {
           // Encrypted shards — FileStorage mode
           metadata.encrypted = true;
@@ -280,11 +447,32 @@ export function ProposeBatchForm({ onSuccess }: Props) {
       placeOfBirth: r.placeOfBirth,
       metadataCID: r.metadataCID,
       sha256Hash: r.sha256Hash as `0x${string}`,
+      // gradeTreeRoot — placeholder using the same file hash for now
+      gradeTreeRoot:
+        (r.sha256Hash as `0x${string}`) ||
+        (("0x" + "0".repeat(64)) as `0x${string}`),
       specialty: r.specialty,
       cycle: r.cycle,
-      mention: r.mention,
       graduationYear: r.graduationYear,
       department: r.department,
+      // baseMoyenne: compute from UE/subjects using batchCcWeight (centi-points)
+      baseMoyenne: (() => {
+        const preview = computeStudentPreview(r).overall;
+        return preview ? Math.round(preview * 100) : 0;
+      })(),
+      // rawCreditsEarned: sum of credits where subject score >= 10
+      rawCreditsEarned: (() => {
+        let credits = 0;
+        r.ues.forEach((ue) =>
+          ue.subjects.forEach((s) => {
+            const cc = s.cc ?? 0;
+            const exam = s.exam ?? 0;
+            const subjScore = cc * batchCcWeight + exam * (1 - batchCcWeight);
+            if (subjScore >= 10) credits += s.credits;
+          }),
+        );
+        return credits;
+      })(),
     }));
 
     // ── Phase 1: Register encrypted shards in FileStorage ──────────────────
@@ -325,7 +513,11 @@ export function ProposeBatchForm({ onSuccess }: Props) {
     proposeBatch({
       ...diplomaContract,
       functionName: "proposeBatch",
-      args: [students, description],
+      args: [
+        students as unknown as any,
+        Math.round(batchCcWeight * 100),
+        description,
+      ],
     });
   };
 
@@ -384,6 +576,24 @@ export function ProposeBatchForm({ onSuccess }: Props) {
           onChange={(e) => setDescription(e.target.value)}
           required
         />
+      </div>
+
+      {/* Batch CC weight slider */}
+      <div>
+        <label className="label">Pondération CC globale (par lot)</label>
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(batchCcWeight * 100)}
+            onChange={(e) => setBatchCcWeight(Number(e.target.value) / 100)}
+            className="w-full"
+          />
+          <div className="w-16 text-right font-mono text-sm">
+            {Math.round(batchCcWeight * 100)}%
+          </div>
+        </div>
       </div>
 
       {/* Student rows */}
@@ -556,6 +766,173 @@ export function ProposeBatchForm({ onSuccess }: Props) {
                   }
                   required
                 />
+              </div>
+            </div>
+
+            {/* UE / Subject editor */}
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">UE &amp; Matières</h4>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => addUE(row.id)}
+                    className="btn-secondary text-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Ajouter UE
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {row.ues.map((ue) => (
+                  <div key={ue.id} className="rounded border p-3 bg-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <input
+                        value={ue.title}
+                        onChange={(e) =>
+                          update(row.id, {
+                            ues: row.ues.map((u) =>
+                              u.id === ue.id
+                                ? { ...u, title: e.target.value }
+                                : u,
+                            ),
+                          })
+                        }
+                        className="input text-sm"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => addSubject(row.id, ue.id)}
+                          className="btn-secondary text-xs"
+                        >
+                          <Plus className="h-3 w-3" /> Matière
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeUE(row.id, ue.id)}
+                          className="text-red-500 text-xs"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {ue.subjects.map((s) => (
+                        <div
+                          key={s.id}
+                          className="grid grid-cols-12 gap-2 items-center"
+                        >
+                          <input
+                            className="col-span-4 input input-sm"
+                            value={s.name}
+                            onChange={(e) =>
+                              updateSubject(row.id, ue.id, s.id, {
+                                name: e.target.value,
+                              })
+                            }
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            max={20}
+                            step={0.1}
+                            className="col-span-2 input input-sm font-mono"
+                            placeholder="CC"
+                            value={s.cc ?? ""}
+                            onChange={(e) =>
+                              updateSubject(row.id, ue.id, s.id, {
+                                cc:
+                                  e.target.value === ""
+                                    ? null
+                                    : Number(e.target.value),
+                              })
+                            }
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            max={20}
+                            step={0.1}
+                            className="col-span-2 input input-sm font-mono"
+                            placeholder="Exam"
+                            value={s.exam ?? ""}
+                            onChange={(e) =>
+                              updateSubject(row.id, ue.id, s.id, {
+                                exam:
+                                  e.target.value === ""
+                                    ? null
+                                    : Number(e.target.value),
+                              })
+                            }
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            max={10}
+                            className="col-span-1 input input-sm"
+                            value={s.coef}
+                            onChange={(e) =>
+                              updateSubject(row.id, ue.id, s.id, {
+                                coef: Number(e.target.value),
+                              })
+                            }
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            max={10}
+                            className="col-span-1 input input-sm"
+                            value={s.credits}
+                            onChange={(e) =>
+                              updateSubject(row.id, ue.id, s.id, {
+                                credits: Number(e.target.value),
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeSubject(row.id, ue.id, s.id)}
+                            className="col-span-1 text-red-500"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Live preview using batch CC weight */}
+            <div className="mt-3 rounded border px-3 py-2 bg-slate-50">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500">
+                  Aperçu des notes (pondération CC:{" "}
+                  {(batchCcWeight * 100).toFixed(0)}%)
+                </p>
+                <div className="text-xs text-slate-400">
+                  Moyenne estimée:{" "}
+                  <strong>
+                    {computeStudentPreview(row).overall
+                      ? computeStudentPreview(row).overall!.toFixed(2)
+                      : "—"}
+                  </strong>
+                </div>
+              </div>
+              <div className="mt-2 text-xs space-y-1">
+                {computeStudentPreview(row).ueResults.map((u) => (
+                  <div
+                    key={u.ueTitle}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-slate-600">{u.ueTitle}</span>
+                    <span className="font-mono">
+                      {u.ueAvg ? u.ueAvg.toFixed(2) : "—"}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 

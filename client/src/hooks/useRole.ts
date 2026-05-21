@@ -1,7 +1,6 @@
 "use client";
-
-import { useAccount, useReadContracts } from "wagmi";
-import { useMemo } from "react";
+import { useAccount, usePublicClient } from "wagmi";
+import { useQuery } from "@tanstack/react-query";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
 import { DIPLOMA_ABI } from "@/lib/abi";
 import {
@@ -13,110 +12,62 @@ import {
 
 export type UserRole =
   | "admin"
-  | "council"
   | "dean"
   | "rector"
+  | "council"
   | "student"
   | "none";
 
 export function useRole() {
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
 
-  // Multi-call batching built right into Wagmi
-  const { data, isLoading, isError, refetch } = useReadContracts({
-    contracts: [
-      {
-        address: CONTRACT_ADDRESS,
-        abi: DIPLOMA_ABI,
-        functionName: "hasRole",
-        args: [ADMIN_ROLE, address as `0x${string}`],
-      },
-      {
-        address: CONTRACT_ADDRESS,
-        abi: DIPLOMA_ABI,
-        functionName: "hasRole",
-        args: [COUNCIL_ROLE, address as `0x${string}`],
-      },
-      {
-        address: CONTRACT_ADDRESS,
-        abi: DIPLOMA_ABI,
-        functionName: "hasRole",
-        args: [DEAN_ROLE, address as `0x${string}`],
-      },
-      {
-        address: CONTRACT_ADDRESS,
-        abi: DIPLOMA_ABI,
-        functionName: "hasRole",
-        args: [RECTOR_ROLE, address as `0x${string}`],
-      },
-    ],
-    query: {
-      enabled: !!address && isConnected,
-      staleTime: 30_000, // Keeps role state stable for 30 seconds before re-verifying
+  const { data: role = "none", isLoading } = useQuery({
+    queryKey: ["role", address],
+    enabled: Boolean(isConnected && address && publicClient),
+    queryFn: async (): Promise<UserRole> => {
+      if (!address || !publicClient) {
+        return "none";
+      }
+
+      try {
+        const [isAdmin, isDean, isRector, isCouncil] = (await Promise.all([
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DIPLOMA_ABI,
+            functionName: "hasRole",
+            args: [ADMIN_ROLE, address],
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DIPLOMA_ABI,
+            functionName: "hasRole",
+            args: [DEAN_ROLE, address],
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DIPLOMA_ABI,
+            functionName: "hasRole",
+            args: [RECTOR_ROLE, address],
+          }),
+          publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: DIPLOMA_ABI,
+            functionName: "hasRole",
+            args: [COUNCIL_ROLE, address],
+          }),
+        ])) as [boolean, boolean, boolean, boolean];
+
+        if (isRector) return "rector";
+        if (isDean) return "dean";
+        if (isAdmin) return "admin";
+        if (isCouncil) return "council";
+        return "student";
+      } catch (error) {
+        return "none";
+      }
     },
   });
 
-  // Calculate roles reactively
-  const rolesState = useMemo(() => {
-    if (!isConnected || !address) {
-      return {
-        role: "none" as UserRole,
-        allRoles: [],
-        isAdmin: false,
-        isCouncil: false,
-        isDean: false,
-        isRector: false,
-        isStudent: false,
-      };
-    }
-
-    if (!data) {
-      return {
-        role: "student" as UserRole,
-        allRoles: [],
-        isAdmin: false,
-        isCouncil: false,
-        isDean: false,
-        isRector: false,
-        isStudent: true,
-      };
-    }
-
-    const [isAdmin, isCouncil, isDean, isRector] = data.map(
-      (res) => !!res.result,
-    );
-
-    // Build list of all roles assigned to this account
-    const allRoles: UserRole[] = [];
-    if (isAdmin) allRoles.push("admin");
-    if (isCouncil) allRoles.push("council");
-    if (isDean) allRoles.push("dean");
-    if (isRector) allRoles.push("rector");
-    if (allRoles.length === 0) allRoles.push("student");
-
-    // Determine primary routing role (Priority hierarchy)
-    let primaryRole: UserRole = "student";
-    if (isRector) primaryRole = "rector";
-    else if (isDean) primaryRole = "dean";
-    else if (isCouncil) primaryRole = "council";
-    else if (isAdmin) primaryRole = "admin";
-
-    return {
-      role: primaryRole,
-      allRoles,
-      isAdmin,
-      isCouncil,
-      isDean,
-      isRector,
-      isStudent: allRoles.includes("student"),
-    };
-  }, [data, address, isConnected]);
-
-  return {
-    ...rolesState,
-    isLoading: isLoading && isConnected,
-    isError,
-    address,
-    refreshRoles: refetch,
-  };
+  return { role, isLoading, address };
 }

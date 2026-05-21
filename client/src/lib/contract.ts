@@ -3,41 +3,6 @@ import { hardhat } from "wagmi/chains";
 import { DIPLOMA_ABI } from "./abi";
 import { CONTRACT_ADDRESS } from "./wagmi";
 
-export type DiplomaRecord = {
-  studentName: string;
-  matricule: string;
-  dateOfBirth: string;
-  placeOfBirth: string;
-  metadataCID: string;
-  sha256Hash: `0x${string}`;
-  university: string;
-  specialty: number;
-  cycle: number;
-  department: string;
-  graduationYear: number;
-  mention: number;
-  issuedAt: bigint;
-  ipfsHash: `0x${string}`;
-  valid: boolean;
-  revocationReason: string;
-  batchId: bigint;
-  mintedAt: bigint;
-};
-export type StudentEntry = {
-  wallet: `0x${string}`;
-  studentName: string;
-  matricule: string;
-  dateOfBirth: string;
-  placeOfBirth: string;
-  metadataCID: string;
-  sha256Hash: `0x${string}`;
-  specialty: number;
-  cycle: number;
-  department: string;
-  graduationYear: number;
-  mention: number;
-};
-
 export const publicClient = createPublicClient({
   chain: hardhat,
   transport: http(process.env.NEXT_PUBLIC_RPC_URL ?? "http://127.0.0.1:8545"),
@@ -63,21 +28,91 @@ export const DEFAULT_ADMIN_ROLE =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
 // ── Batch status labels ───────────────────────────────────────────────────────
+// 0 Proposed | 1 Deliberated | 2 SignedByDean | 3 SignedByRector | 4 Finalized | 5 Cancelled
 export const BATCH_STATUS_LABELS: Record<number, string> = {
   0: "Proposé",
-  1: "Signé par le Doyen",
-  2: "Signé par le Recteur",
-  3: "Émis",
-  4: "Annulé",
+  1: "Délibéré",
+  2: "Signé par le Doyen",
+  3: "Signé par le Recteur",
+  4: "Finalisé",
+  5: "Annulé",
 };
+
+export const BATCH_STATUS = {
+  Proposed: 0,
+  Deliberated: 1,
+  SignedByDean: 2,
+  SignedByRector: 3,
+  Finalized: 4,
+  Cancelled: 5,
+} as const;
+
+// ── Progression status (LMD) ─────────────────────────────────────────────────
+export const PROGRESSION_STATUS = {
+  Ajourne: 0,
+  AdmisAvecDettes: 1,
+  Admis: 2,
+} as const;
+
+export const PROGRESSION_LABELS: Record<number, string> = {
+  0: "Ajourné",
+  1: "Admis avec dettes",
+  2: "Admis",
+};
+
+export const PROGRESSION_COLORS: Record<number, string> = {
+  0: "bg-red-100 text-red-800 border-red-200",
+  1: "bg-amber-100 text-amber-800 border-amber-200",
+  2: "bg-emerald-100 text-emerald-800 border-emerald-200",
+};
+
+/** Cycles that, when Admis, are entitled to mint a diploma NFT. */
+export function isFinalCycle(cycle: number): boolean {
+  return cycle === 2 /* L3 */ || cycle === 4 /* M2 */;
+}
+
+/** Default Contrôle Continu weight (%) — matches the contract default. */
+export const DEFAULT_CC_WEIGHT = 40;
+/** Min credits (out of 60) to be "Admis avec dettes" in an intermediate year. */
+export const CREDITS_THRESHOLD_DEBTS = 30;
 
 export const BATCH_STATUS_COLORS: Record<number, string> = {
   0: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  1: "bg-blue-100 text-blue-800 border-blue-200",
-  2: "bg-purple-100 text-purple-800 border-purple-200",
-  3: "bg-green-100 text-green-800 border-green-200",
-  4: "bg-red-100 text-red-800 border-red-200",
+  1: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  2: "bg-blue-100 text-blue-800 border-blue-200",
+  3: "bg-purple-100 text-purple-800 border-purple-200",
+  4: "bg-green-100 text-green-800 border-green-200",
+  5: "bg-red-100 text-red-800 border-red-200",
 };
+
+// ── Grading scale ────────────────────────────────────────────────────────────
+/** Passing grade in centi-points (10.00 / 20). */
+export const PASS_GRADE = 1000;
+/** Maximum representable grade (20.00 / 20). */
+export const MAX_GRADE = 2000;
+
+/** Convert a uint16 0..2000 moyenne to a display string "12.50". */
+export function formatMoyenne(m: number | bigint): string {
+  const n = typeof m === "bigint" ? Number(m) : m;
+  return (n / 100).toFixed(2);
+}
+
+/** Parse a UI string like "12,5" or "12.50" into a uint16 (0..2000). Returns NaN if invalid. */
+export function parseMoyenne(input: string): number {
+  const cleaned = input.trim().replace(",", ".");
+  if (cleaned === "") return NaN;
+  const f = Number(cleaned);
+  if (!Number.isFinite(f) || f < 0 || f > 20) return NaN;
+  return Math.round(f * 100);
+}
+
+/** Derive a mention (0..3) from a moyenne in centi-points. Matches the on-chain rule. */
+export function mentionFromMoyenne(m: number): number {
+  if (m < 1200) return 0; // Passable
+  if (m < 1400) return 1; // Assez Bien
+  if (m < 1600) return 2; // Bien
+  return 3; // Très Bien
+}
 
 // ── Specialty / Cycle / Mention maps ─────────────────────────────────────────
 export const SPECIALTY_OPTIONS = [
@@ -98,13 +133,19 @@ export const SPECIALTY_SHORT: Record<number, string> = {
 };
 
 export const CYCLE_OPTIONS = [
-  { value: 0, label: "L3 — Licence" },
-  { value: 1, label: "M2 — Master" },
+  { value: 0, label: "L1 — Licence 1" },
+  { value: 1, label: "L2 — Licence 2" },
+  { value: 2, label: "L3 — Licence 3" },
+  { value: 3, label: "M1 — Master 1" },
+  { value: 4, label: "M2 — Master 2" },
 ];
 
 export const CYCLE_SHORT: Record<number, string> = {
-  0: "L3",
-  1: "M2",
+  0: "L1",
+  1: "L2",
+  2: "L3",
+  3: "M1",
+  4: "M2",
 };
 
 export const MENTION_OPTIONS = [
