@@ -1,0 +1,107 @@
+datasource db {
+  provider = "postgresql"
+
+}
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated" // Adds the newly required Prisma 7 output directory
+}
+
+model Student {
+  id           String       @id @default(cuid())
+  matricule    String       @unique // Unique student registration number (e.g., "202331045566")
+  firstName    String
+  lastName     String
+  email        String       @unique
+  dateOfBirth  DateTime?
+  currentYear  YearLevel    @default(L1) // Tracks if student is currently L1, L2, or L3
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  enrollments  Enrollment[]
+  transcripts  Transcript[] 
+  annualAverages AnnualAverage[]
+}
+
+model Course {
+  id          String       @id @default(cuid())
+  code        String       @unique // e.g., "MATH101", "CS301"
+  name        String
+  credits     Int          // ECTS credit value (e.g., 6)
+  coefficient Float        // Calculation weight multiplier (e.g., 3.0)
+  semester    Semester     // Linked to the specific structural semester
+  yearLevel   YearLevel    // Helper to filter courses by L1, L2, L3 easily
+
+  // Relations
+  enrollments Enrollment[]
+}
+
+model Enrollment {
+  id           String   @id @default(cuid())
+  studentId    String
+  courseId     String
+  academicYear String   // e.g., "2025-2026"
+  
+  // Grade tracking component (Out of 20)
+  examNote     Float?   // Final examination mark
+  ccNote       Float?   // Continuous evaluation / Contrôle Continu
+  finalNote    Float?   // Calculated average for this course
+  isPassed     Boolean  @default(false)
+
+  // Relations
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId, academicYear])
+}
+
+model Transcript {
+  id           String   @id @default(cuid())
+  studentId    String
+  semester     Semester // Tracks S1, S2, up to S6
+  yearLevel    YearLevel // Tracks if this transcript was for their L1, L2, or L3 year
+  academicYear String   // e.g., "2025-2026"
+  average      Float    // Calculated weighted average for this specific semester (out of 20)
+  totalCredits Int      // Total credits validated/earned this semester
+
+  // Relations
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, semester, academicYear])
+}
+model AnnualAverage {
+  id           String          @id @default(cuid())
+  studentId    String
+  yearLevel    YearLevel       // L1, L2, or L3
+  academicYear String          // e.g., "2025-2026"
+  average      Float           // Combined weighted average (out of 20)
+  totalCredits Int             // Total ECTS credits earned this year (Max 60)
+  status       AdmissionStatus @default(AJOURNE) // Track exactly how they pass
+
+  // Relations
+  student      Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, yearLevel, academicYear])
+}
+
+enum AdmissionStatus {
+  ADMIS_MOYENNE  // Passed with annual average >= 10
+  ADMIS_CREDITS   // Passed with average < 10 but earned >= 30 credits (LMD Rule)
+  AJOURNE        // Failed (Ajourné / Répète l'année)
+}
+
+enum YearLevel {
+  L1
+  L2
+  L3
+}
+
+enum Semester {
+  S1
+  S2
+  S3
+  S4
+  S5
+  S6
+}
