@@ -8,19 +8,22 @@ generator client {
 }
 
 model Student {
-  id           String       @id @default(cuid())
-  matricule    String       @unique // Unique student registration number (e.g., "202331045566")
-  firstName    String
-  lastName     String
-  email        String       @unique
-  dateOfBirth  DateTime?
-  currentYear  YearLevel    @default(L1) // Tracks if student is currently L1, L2, or L3
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  matricule      String       @unique // Unique student registration number (e.g., "202331045566")
+  firstName      String
+  lastName       String
+  email          String       @unique
+  dateOfBirth    DateTime?
+  wallet         String?      @unique
+  department     String?
+  graduationYear Int?
+  currentYear    YearLevel    @default(L1) // Tracks if student is currently L1, L2, or L3
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // Relations
-  enrollments  Enrollment[]
-  transcripts  Transcript[] 
+  enrollments    Enrollment[]
+  transcripts    Transcript[] 
   annualAverages AnnualAverage[]
 }
 

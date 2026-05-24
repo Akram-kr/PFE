@@ -824,6 +824,9 @@ export const StudentScalarFieldEnum = {
   lastName: 'lastName',
   email: 'email',
   dateOfBirth: 'dateOfBirth',
+  wallet: 'wallet',
+  department: 'department',
+  graduationYear: 'graduationYear',
   currentYear: 'currentYear',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -944,20 +947,6 @@ export type ListDateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaM
 
 
 /**
- * Reference to a field of type 'YearLevel'
- */
-export type EnumYearLevelFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'YearLevel'>
-    
-
-
-/**
- * Reference to a field of type 'YearLevel[]'
- */
-export type ListEnumYearLevelFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'YearLevel[]'>
-    
-
-
-/**
  * Reference to a field of type 'Int'
  */
 export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
@@ -968,6 +957,20 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+/**
+ * Reference to a field of type 'YearLevel'
+ */
+export type EnumYearLevelFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'YearLevel'>
+    
+
+
+/**
+ * Reference to a field of type 'YearLevel[]'
+ */
+export type ListEnumYearLevelFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'YearLevel[]'>
     
 
 

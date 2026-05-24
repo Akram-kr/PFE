@@ -80,16 +80,12 @@ export function ProposeBatchForm({ onSuccess }: Props) {
   const [rows, setRows] = useState<StudentRow[]>([emptyRow()]);
   const [globalError, setGlobalError] = useState("");
   const [submitStep, setSubmitStep] = useState<SubmitStep>("idle");
-  /** Cached AES-GCM key derived from MetaMask signature — never leaves the browser */
   const encKeyRef = useRef<CryptoKey | null>(null);
-
   const { signMessageAsync } = useSignMessage();
 
-  // FileStorage registration transaction (phase 1)
   const { writeContractAsync: uploadToStorage, isPending: isStoragePending } =
     useWriteContract();
 
-  // Batch proposal transaction (phase 2)
   const {
     writeContract: proposeBatch,
     data: txHash,
@@ -108,8 +104,6 @@ export function ProposeBatchForm({ onSuccess }: Props) {
       }, 0);
     }
   }, [isSuccess, onSuccess]);
-
-  // ── Row helpers ─────────────────────────────────────────────────────────────
 
   const update = (id: string, patch: Partial<StudentRow>) =>
     setRows((currentRows) =>
@@ -186,8 +180,6 @@ export function ProposeBatchForm({ onSuccess }: Props) {
         ? currentRows.filter((row) => row.id !== id)
         : currentRows,
     );
-
-  // ── IPFS Upload ─────────────────────────────────────────────────────────────
 
   const handleUploadAll = async () => {
     setGlobalError("");
@@ -393,8 +385,6 @@ export function ProposeBatchForm({ onSuccess }: Props) {
     return "Proposer le lot";
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {FILESTORAGE_ENABLED ? (
@@ -402,7 +392,7 @@ export function ProposeBatchForm({ onSuccess }: Props) {
           <Lock className="h-4 w-4 shrink-0" />
           <span>
             <strong>Mode chiffré activé</strong> — les PDFs seront chiffrés
-            (AES-GCM) et fragmentés en 3 éclats IPFS avant d&apos;être intégrés au
+            (AES-GCM) et fragmentés en 3 éclats IPFS avant dêtre intégrés au
             lot.
           </span>
         </div>

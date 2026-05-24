@@ -81,6 +81,9 @@ export const StudentScalarFieldEnum = {
   lastName: 'lastName',
   email: 'email',
   dateOfBirth: 'dateOfBirth',
+  wallet: 'wallet',
+  department: 'department',
+  graduationYear: 'graduationYear',
   currentYear: 'currentYear',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'

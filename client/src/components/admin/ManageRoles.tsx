@@ -1,46 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useWriteContract, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { isAddress } from "viem";
 import {
-  UserPlus,
-  UserMinus,
-  ShieldCheck,
-  Loader2,
   CheckCircle2,
+  Loader2,
+  ShieldCheck,
+  UserMinus,
+  UserPlus,
   XCircle,
 } from "lucide-react";
 import { DIPLOMA_ABI } from "@/lib/abi";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
-import { DEAN_ROLE, RECTOR_ROLE, COUNCIL_ROLE } from "@/lib/contract";
+import { DEAN_ROLE, RECTOR_ROLE } from "@/lib/contract";
 import { cn } from "@/lib/utils";
 
-type RoleAction =
-  | "assignDean"
-  | "assignRector"
-  | "assignCouncil"
-  | "removeDean"
-  | "removeRector"
-  | "removeCouncil";
+type RoleAction = "grantRole" | "revokeRole";
 
 interface RoleRowProps {
   label: string;
   roleHash: `0x${string}`;
-  assignFn: RoleAction;
-  removeFn: RoleAction;
   color: string;
   onDone: () => void;
 }
 
-function RoleRow({
-  label,
-  roleHash,
-  assignFn,
-  removeFn,
-  color,
-  onDone,
-}: RoleRowProps) {
+function RoleRow({ label, roleHash, color, onDone }: RoleRowProps) {
   const [input, setInput] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(
     null,
@@ -64,22 +49,27 @@ function RoleRow({
 
   const alreadyHasRole = addressValid && hasRoleData === true;
 
-  async function handle(fn: RoleAction) {
+  async function handle(action: RoleAction) {
     if (!addressValid) return;
+
     setFeedback(null);
+
     try {
       await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: DIPLOMA_ABI,
-        functionName: fn,
-        args: [input as `0x${string}`],
+        functionName: action,
+        args: [roleHash, input as `0x${string}`],
       });
+
       setFeedback({
         ok: true,
-        msg: fn.startsWith("assign")
-          ? `${label} assigné avec succès.`
-          : `${label} supprimé.`,
+        msg:
+          action === "grantRole"
+            ? `${label} assigné avec succès.`
+            : `${label} retiré avec succès.`,
       });
+
       setInput("");
       onDone();
     } catch (err: unknown) {
@@ -94,29 +84,27 @@ function RoleRow({
         <ShieldCheck className={cn("h-4 w-4", color)} />
         <span className="font-semibold text-slate-800 text-sm">{label}</span>
         {alreadyHasRole && (
-          <span className="ml-auto text-xs bg-green-100 text-green-700 border border-green-200 rounded-full px-2 py-0.5">
+          <span className="ml-auto rounded-full border border-green-200 bg-green-100 px-2 py-0.5 text-xs text-green-700">
             Rôle actif
           </span>
         )}
       </div>
 
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="0x... adresse du wallet"
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            setFeedback(null);
-          }}
-          className={cn(
-            "flex-1 rounded-lg border bg-white px-3 py-2 text-sm font-mono outline-none transition",
-            "focus:ring-2 focus:ring-uni-blue/30 focus:border-uni-blue",
-            input && !addressValid ? "border-red-300" : "border-slate-200",
-          )}
-          disabled={isPending}
-        />
-      </div>
+      <input
+        type="text"
+        placeholder="0x... adresse du wallet"
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setFeedback(null);
+        }}
+        className={cn(
+          "w-full rounded-lg border bg-white px-3 py-2 text-sm font-mono outline-none transition",
+          "focus:border-uni-blue focus:ring-2 focus:ring-uni-blue/30",
+          input && !addressValid ? "border-red-300" : "border-slate-200",
+        )}
+        disabled={isPending}
+      />
 
       {input && !addressValid && (
         <p className="text-xs text-red-500">Adresse invalide.</p>
@@ -124,9 +112,9 @@ function RoleRow({
 
       <div className="flex gap-2">
         <button
-          onClick={() => handle(assignFn)}
+          onClick={() => handle("grantRole")}
           disabled={!addressValid || isPending}
-          className="flex items-center gap-1.5 rounded-lg bg-uni-blue px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40 hover:bg-uni-blue/90 transition"
+          className="flex items-center gap-1.5 rounded-lg bg-uni-blue px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-uni-blue/90 disabled:opacity-40"
         >
           {isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -136,9 +124,9 @@ function RoleRow({
           Assigner
         </button>
         <button
-          onClick={() => handle(removeFn)}
+          onClick={() => handle("revokeRole")}
           disabled={!addressValid || isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 disabled:opacity-40 hover:bg-red-100 transition"
+          className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-40"
         >
           {isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -185,8 +173,6 @@ export function ManageRoles({ onDone }: { onDone: () => void }) {
       <RoleRow
         label="Doyen"
         roleHash={DEAN_ROLE}
-        assignFn="assignDean"
-        removeFn="removeDean"
         color="text-purple-600"
         onDone={onDone}
       />
@@ -194,18 +180,7 @@ export function ManageRoles({ onDone }: { onDone: () => void }) {
       <RoleRow
         label="Recteur"
         roleHash={RECTOR_ROLE}
-        assignFn="assignRector"
-        removeFn="removeRector"
         color="text-amber-600"
-        onDone={onDone}
-      />
-
-      <RoleRow
-        label="Conseil (Council)"
-        roleHash={COUNCIL_ROLE}
-        assignFn="assignCouncil"
-        removeFn="removeCouncil"
-        color="text-indigo-600"
         onDone={onDone}
       />
     </div>

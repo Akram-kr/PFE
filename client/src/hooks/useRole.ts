@@ -3,20 +3,9 @@ import { useAccount, usePublicClient } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
 import { DIPLOMA_ABI } from "@/lib/abi";
-import {
-  ADMIN_ROLE,
-  DEAN_ROLE,
-  RECTOR_ROLE,
-  COUNCIL_ROLE,
-} from "@/lib/contract";
+import { ADMIN_ROLE, DEAN_ROLE, RECTOR_ROLE } from "@/lib/contract";
 
-export type UserRole =
-  | "admin"
-  | "dean"
-  | "rector"
-  | "council"
-  | "student"
-  | "none";
+export type UserRole = "admin" | "dean" | "rector" | "student" | "none";
 
 export function useRole() {
   const { address, isConnected } = useAccount();
@@ -31,7 +20,7 @@ export function useRole() {
       }
 
       try {
-        const [isAdmin, isDean, isRector, isCouncil] = (await Promise.all([
+        const [isAdmin, isDean, isRector] = (await Promise.all([
           publicClient.readContract({
             address: CONTRACT_ADDRESS,
             abi: DIPLOMA_ABI,
@@ -50,18 +39,12 @@ export function useRole() {
             functionName: "hasRole",
             args: [RECTOR_ROLE, address],
           }),
-          publicClient.readContract({
-            address: CONTRACT_ADDRESS,
-            abi: DIPLOMA_ABI,
-            functionName: "hasRole",
-            args: [COUNCIL_ROLE, address],
-          }),
-        ])) as [boolean, boolean, boolean, boolean];
+        ])) as [boolean, boolean, boolean];
 
         if (isRector) return "rector";
         if (isDean) return "dean";
         if (isAdmin) return "admin";
-        if (isCouncil) return "council";
+
         return "student";
       } catch (error) {
         return "none";

@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import { useReadContract } from "wagmi";
 import {
   LayoutDashboard,
   Plus,
@@ -11,10 +10,11 @@ import {
   Loader2,
   Users,
 } from "lucide-react";
-import { diplomaContract } from "@/lib/contract";
+import { parseAbiItem } from "viem";
+import { publicClient } from "@/lib/contract";
 import { useRole } from "@/hooks/useRole";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
-import { ProposeBatchForm } from "@/components/admin/ProposeBatchForm";
+import { ProposeBatchFormAuto } from "@/components/admin/ProposeBatchFormAuto";
 import { BatchCard } from "@/components/admin/BatchCard";
 import { ManageRoles } from "@/components/admin/ManageRoles";
 import { WalletButton } from "@/components/WalletButton";
@@ -33,11 +33,14 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
     label: "Recteur",
     color: "bg-amber-100 text-amber-800 border-amber-200",
   },
-  council: {
-    label: "Conseil",
-    color: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  },
 };
+
+const proposedEvent = parseAbiItem(
+  "event BatchProposed(uint256 indexed batchId, address indexed proposer, uint256 studentCount)",
+);
+const finalizedEvent = parseAbiItem(
+  "event BatchFinalized(uint256 indexed batchId, uint256 diplomasMinted)",
+);
 
 export default function AdminPage() {
   const { isConnected } = useAccount();
@@ -45,26 +48,66 @@ export default function AdminPage() {
   const [showForm, setShowForm] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [batchIds, setBatchIds] = useState<bigint[]>([]);
+  const [totalTokens, setTotalTokens] = useState(0);
 
-  const { data: nextBatchId, refetch } = useReadContract({
-    ...diplomaContract,
-    functionName: "nextBatchId",
-  });
+  useEffect(() => {
+    let mounted = true;
 
-  const { data: nextTokenId } = useReadContract({
-    ...diplomaContract,
-    functionName: "nextTokenId",
-  });
+    const loadStats = async () => {
+      try {
+        const [proposedLogs, finalizedLogs] = await Promise.all([
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: proposedEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: finalizedEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        const nextBatchIds = proposedLogs
+          .map((log) => log.args.batchId)
+          .filter((value): value is bigint => value !== undefined)
+          .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+        const mintedTokens = finalizedLogs.reduce(
+          (sum, log) => sum + Number(log.args.diplomasMinted ?? BigInt(0)),
+          0,
+        );
+
+        setBatchIds(nextBatchIds);
+        setTotalTokens(mintedTokens);
+      } catch {
+        if (mounted) {
+          setBatchIds([]);
+          setTotalTokens(0);
+        }
+      }
+    };
+
+    loadStats();
+
+    return () => {
+      mounted = false;
+    };
+  }, [refreshKey]);
 
   const isAdmin = role === "admin";
-  const hasAnyRole = isAdmin || role === "dean" || role === "rector" || role === "council";
+  const hasAnyRole = isAdmin || role === "dean" || role === "rector";
   const roles = hasAnyRole ? [role] : [];
-  const totalBatches = nextBatchId ? Number(nextBatchId) : 0;
-  const totalTokens = nextTokenId ? Number(nextTokenId) : 0;
-  const batchIds = Array.from({ length: totalBatches }, (_, i) => BigInt(i));
+  const totalBatches = batchIds.length;
 
   const handleRefresh = () => {
-    refetch();
     setRefreshKey((k) => k + 1);
   };
 
@@ -111,8 +154,8 @@ export default function AdminPage() {
             Accès non autorisé
           </h1>
           <p className="text-slate-500 text-sm">
-            Ce wallet ne possède aucun rôle valide (Admin, Doyen, Recteur, Conseil) sur le
-            contrat.
+            Ce wallet ne possède aucun rôle valide (Admin, Doyen, Recteur,
+            Conseil) sur le contrat.
           </p>
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-xs font-mono text-slate-500 space-y-1">
             <p>
@@ -175,7 +218,7 @@ export default function AdminPage() {
           >
             <div className="flex items-center gap-2 font-semibold text-slate-800">
               <Users className="h-5 w-5 text-purple-500" />
-              Gérer les rôles — Doyen, Recteur &amp; Conseil
+              Gérer les rôles — Doyen &amp; Recteur
             </div>
             <span className="text-xs text-slate-400">
               {showRoles ? "Fermer ▲" : "Ouvrir ▼"}
@@ -206,7 +249,7 @@ export default function AdminPage() {
           </button>
           {showForm && (
             <div className="mt-6 border-t border-slate-100 pt-6">
-              <ProposeBatchForm
+              <ProposeBatchFormAuto
                 onSuccess={() => {
                   setShowForm(false);
                   handleRefresh();

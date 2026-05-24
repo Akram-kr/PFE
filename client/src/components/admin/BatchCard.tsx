@@ -3,99 +3,77 @@
 import { useEffect, useState } from "react";
 import {
   useAccount,
-  useWriteContract,
-  useWaitForTransactionReceipt,
   useReadContract,
+  useWaitForTransactionReceipt,
+  useWriteContract,
 } from "wagmi";
-import {
-  CheckCircle,
-  Loader2,
-  Users,
-  X,
-  Clock,
-  AlertTriangle,
-  Gavel,
-} from "lucide-react";
-import {
-  diplomaContract,
-  BATCH_STATUS_LABELS,
-  BATCH_STATUS_COLORS,
-  DEAN_ROLE,
-  RECTOR_ROLE,
-  ADMIN_ROLE,
-  COUNCIL_ROLE,
-  formatTimestamp,
-  publicClient,
-  formatMoyenne,
-  PROGRESSION_LABELS,
-  PROGRESSION_COLORS,
-  parseMoyenne,
-} from "@/lib/contract";
+import { AlertTriangle, CheckCircle, Loader2, Users, X } from "lucide-react";
+import { parseAbiItem } from "viem";
+import { DIPLOMA_ABI } from "@/lib/abi";
 import { cn } from "@/lib/utils";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
-import { DIPLOMA_ABI } from "@/lib/abi";
+import { getBatchDraft } from "@/lib/batchDraft";
+import {
+  ADMIN_ROLE,
+  BATCH_STATUS_COLORS,
+  BATCH_STATUS_LABELS,
+  DEAN_ROLE,
+  RECTOR_ROLE,
+  diplomaContract,
+  publicClient,
+} from "@/lib/contract";
+
+type BatchStatus = 0 | 1 | 2 | 3 | 4;
+
+type BatchState = {
+  status: BatchStatus | null;
+  studentCount: bigint | null;
+  proposer: string | null;
+  cancelReason: string | null;
+};
 
 interface BatchCardProps {
   batchId: bigint;
   onUpdate?: () => void;
 }
 
-type StudentStruct = {
-  studentName?: string;
-  matricule?: string;
-  baseMoyenne?: number | bigint;
-};
+function shortenAddress(address: string) {
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
 
-type PVStruct = {
-  baseMoyenne?: number | bigint;
-  finalMoyenne?: number | bigint;
-  status?: number | bigint;
-};
+const proposedEvent = parseAbiItem(
+  "event BatchProposed(uint256 indexed batchId, address indexed proposer, uint256 studentCount)",
+);
+const signedByDeanEvent = parseAbiItem(
+  "event BatchSignedByDean(uint256 indexed batchId, address indexed dean)",
+);
+const signedByRectorEvent = parseAbiItem(
+  "event BatchSignedByRector(uint256 indexed batchId, address indexed rector)",
+);
+const finalizedEvent = parseAbiItem(
+  "event BatchFinalized(uint256 indexed batchId, uint256 diplomasMinted)",
+);
+const cancelledEvent = parseAbiItem(
+  "event BatchCancelled(uint256 indexed batchId, address indexed cancelledBy, string reason)",
+);
 
 export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
   const { address } = useAccount();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-
-  const { data: status, refetch: refetchStatus } = useReadContract({
-    ...diplomaContract,
-    functionName: "getBatchStatus",
-    args: [batchId],
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [finalizeError, setFinalizeError] = useState("");
+  const [isPreparingFinalization, setIsPreparingFinalization] = useState(false);
+  const [batchState, setBatchState] = useState<BatchState>({
+    status: null,
+    studentCount: null,
+    proposer: null,
+    cancelReason: null,
   });
 
-  const { data: studentCount } = useReadContract({
-    ...diplomaContract,
-    functionName: "getBatchStudentCount",
-    args: [batchId],
-  });
-
-  const { data: description } = useReadContract({
-    ...diplomaContract,
-    functionName: "getBatchDescription",
-    args: [batchId],
-  });
-
-  const { data: expiresAt } = useReadContract({
-    ...diplomaContract,
-    functionName: "getBatchExpiry",
-    args: [batchId],
-  });
-
-  const { data: cancelReasonOnChain } = useReadContract({
-    ...diplomaContract,
-    functionName: "getBatchCancelReason",
-    args: [batchId],
-    query: { enabled: status === 5 },
-  });
-
-  const { data: deliberation } = useReadContract({
-    ...diplomaContract,
-    functionName: "getBatchDeliberation",
-    args: [batchId],
-    query: {
-      enabled:
-        status !== undefined && Number(status) >= 1 && Number(status) !== 5,
-    },
+  const { writeContract, data: txHash, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash: txHash,
   });
 
   const { data: isAdmin } = useReadContract({
@@ -122,155 +100,197 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
     query: { enabled: !!address },
   });
 
-  const { data: isCouncil } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: DIPLOMA_ABI,
-    functionName: "hasRole",
-    args: [COUNCIL_ROLE, address!],
-    query: { enabled: !!address },
-  });
-
-  const [delibNote, setDelibNote] = useState("");
-  const [delibError, setDelibError] = useState("");
-  const [showDelibForm, setShowDelibForm] = useState(false);
-  const [pvRows, setPvRows] = useState<
-    { idx: number; student: StudentStruct; pv: PVStruct }[]
-  >([]);
-  const [rachatsState, setRachatsState] = useState<
-    Record<number, { bumped: string; reason: string; transcriptCID: string }>
-  >({});
-
-  const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash: txHash,
-  });
-
-  useEffect(() => {
-    if (isSuccess) {
-      refetchStatus();
-      onUpdate?.();
-      setShowCancelModal(false);
-      setCancelReason("");
-      setShowDelibForm(false);
-      setDelibNote("");
-    }
-  }, [isSuccess, refetchStatus, onUpdate]);
-
-  // Fetch PV and student info for PV table and rachat panel
   useEffect(() => {
     let mounted = true;
-    (async () => {
+
+    const loadBatchData = async () => {
       try {
-        if (!studentCount) return;
-        const n = Number(studentCount);
-        const calls = [] as Promise<unknown>[];
-        for (let i = 0; i < n; i++) {
-          calls.push(
-            publicClient.readContract({
-              ...diplomaContract,
-              functionName: "getBatchStudent",
-              args: [batchId, BigInt(i)],
-            }),
-          );
+        const [
+          proposedLogs,
+          deanLogs,
+          rectorLogs,
+          finalizedLogs,
+          cancelledLogs,
+        ] = await Promise.all([
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: proposedEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: signedByDeanEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: signedByRectorEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: finalizedEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: CONTRACT_ADDRESS,
+            event: cancelledEvent,
+            fromBlock: BigInt(0),
+            toBlock: "latest",
+          }),
+        ]);
+
+        const proposed = proposedLogs.find(
+          (log) => log.args.batchId === batchId,
+        );
+        const dean = deanLogs.find((log) => log.args.batchId === batchId);
+        const rector = rectorLogs.find((log) => log.args.batchId === batchId);
+        const finalized = finalizedLogs.find(
+          (log) => log.args.batchId === batchId,
+        );
+        const cancelled = cancelledLogs.find(
+          (log) => log.args.batchId === batchId,
+        );
+
+        const nextState: BatchState = {
+          status: null,
+          studentCount: proposed?.args.studentCount ?? null,
+          proposer: proposed?.args.proposer ?? null,
+          cancelReason: cancelled?.args.reason ?? null,
+        };
+
+        if (cancelled) {
+          nextState.status = 4;
+        } else if (finalized) {
+          nextState.status = 3;
+        } else if (rector) {
+          nextState.status = 2;
+        } else if (dean) {
+          nextState.status = 1;
+        } else if (proposed) {
+          nextState.status = 0;
         }
-        const students = await Promise.all(calls);
-        const pvCalls = [] as Promise<unknown>[];
-        for (let i = 0; i < n; i++)
-          pvCalls.push(
-            publicClient.readContract({
-              ...diplomaContract,
-              functionName: "getStudentPV",
-              args: [batchId, BigInt(i)],
-            }),
-          );
-        const pvs = await Promise.all(pvCalls);
-        if (!mounted) return;
-        const merged = students.map((s: unknown, idx: number) => ({
-          idx,
-          student: s as StudentStruct,
-          pv: pvs[idx] as PVStruct,
-        }));
-        setPvRows(merged);
+
+        if (mounted) {
+          setBatchState(nextState);
+        }
       } catch {
-        // ignore
+        if (mounted) {
+          setBatchState({
+            status: null,
+            studentCount: null,
+            proposer: null,
+            cancelReason: null,
+          });
+        }
       }
-    })();
+    };
+
+    loadBatchData();
+
     return () => {
       mounted = false;
     };
-  }, [studentCount, batchId]);
+  }, [batchId, refreshKey]);
 
-  const loading = isPending || isConfirming;
-  const statusNum = status !== undefined ? Number(status) : undefined;
-  // 0 Proposed | 1 Deliberated | 2 SignedByDean | 3 SignedByRector | 4 Minted | 5 Cancelled
-  const isCancelled = statusNum === 5;
-  const isMinted = statusNum === 4;
-
-  const now = Math.floor(Date.now() / 1000);
-  const isExpired =
-    expiresAt !== undefined &&
-    !isMinted &&
-    !isCancelled &&
-    Number(expiresAt) < now;
-
-  const canDeliberate = isCouncil && statusNum === 0 && !isExpired;
-  const canSignDean = isDean && statusNum === 1 && !isExpired;
-  const canSignRector = isRector && statusNum === 2 && !isExpired;
-  const canFinalize = isAdmin && statusNum === 3 && !isExpired;
-  const canCancel = isAdmin && !isMinted && !isCancelled;
-
-  const handleAction = (
-    fn: "signByDean" | "signByRector" | "finalizeBatch",
-  ) => {
-    writeContract({ ...diplomaContract, functionName: fn, args: [batchId] });
-  };
-
-  const handleDeliberate = () => {
-    setDelibError("");
-
-    const studentCountNum = Number(studentCount ?? 0);
-    const transcriptCIDs: string[] = [];
-    const rachats: {
-      studentIndex: bigint;
-      bumpedMoyenne: number;
-      reason: string;
-    }[] = [];
-
-    for (let idx = 0; idx < studentCountNum; idx += 1) {
-      const entry = rachatsState[idx] || {
-        bumped: "",
-        reason: "",
-        transcriptCID: "",
-      };
-      const cid = entry.transcriptCID?.trim() ?? "";
-      transcriptCIDs.push(cid);
-
-      const bumped = parseMoyenne(entry.bumped);
-      if (entry.reason?.trim() && !Number.isNaN(bumped)) {
-        rachats.push({
-          studentIndex: BigInt(idx),
-          bumpedMoyenne: bumped,
-          reason: entry.reason.trim(),
-        });
-      }
+  useEffect(() => {
+    if (!isSuccess) {
+      return;
     }
 
-    if (transcriptCIDs.some((cid) => cid === "")) {
-      setDelibError(
-        "Veuillez fournir un CID de transcript IPFS pour chaque étudiant.",
+    const timeoutId = window.setTimeout(() => {
+      setRefreshKey((value) => value + 1);
+      onUpdate?.();
+      setShowCancelModal(false);
+      setCancelReason("");
+      setFinalizeError("");
+      setIsPreparingFinalization(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isSuccess, onUpdate]);
+
+  const draftStudents = getBatchDraft(batchId);
+  const loading = isPending || isConfirming || isPreparingFinalization;
+  const statusNum = batchState.status;
+  const canSignDean = Boolean(isDean) && statusNum === 0;
+  const canSignRector = Boolean(isRector) && statusNum === 1;
+  const canFinalize = Boolean(isAdmin) && statusNum === 2;
+  const canCancel = Boolean(isAdmin) && statusNum !== 3 && statusNum !== 4;
+
+  const handleFinalizeBatch = async () => {
+    setFinalizeError("");
+
+    if (draftStudents.length === 0) {
+      setFinalizeError(
+        "Aucune donnée du lot n'est disponible. Reproposez le lot pour générer les PDF automatiquement.",
       );
       return;
     }
 
-    (writeContract as any)({
+    try {
+      setIsPreparingFinalization(true);
+
+      const response = await fetch(
+        `/api/batches/${batchId.toString()}/finalize`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ students: draftStudents }),
+        },
+      );
+
+      const payload = (await response.json()) as {
+        error?: string;
+        cids?: string[];
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "La génération des PDF a échoué.");
+      }
+
+      if (!payload.cids?.length) {
+        throw new Error("Aucun CID IPFS n'a été retourné.");
+      }
+
+      writeContract({
+        ...diplomaContract,
+        functionName: "finalizeBatch",
+        args: [batchId, payload.cids],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFinalizeError(message);
+      setIsPreparingFinalization(false);
+    }
+  };
+
+  const handleAction = async (
+    action: "signByDean" | "signByRector" | "finalizeBatch",
+  ) => {
+    if (action === "finalizeBatch") {
+      await handleFinalizeBatch();
+      return;
+    }
+
+    writeContract({
       ...diplomaContract,
-      functionName: "deliberate",
-      args: [batchId, rachats, transcriptCIDs, delibNote.trim()],
+      functionName: action,
+      args: [batchId],
     });
   };
 
   const handleCancelConfirm = () => {
-    if (!cancelReason.trim()) return;
+    if (!cancelReason.trim()) {
+      return;
+    }
+
     writeContract({
       ...diplomaContract,
       functionName: "cancelBatch",
@@ -286,32 +306,24 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
             <p className="text-xs text-slate-400 font-mono mb-1">
               Lot #{batchId.toString()}
             </p>
-            <p className="font-semibold text-slate-800 leading-snug truncate">
-              {description ?? "Chargement…"}
+            <p className="font-semibold text-slate-800 leading-snug">
+              Lot de diplômes
             </p>
-            {expiresAt !== undefined && !isMinted && !isCancelled && (
-              <p
-                className={cn(
-                  "text-xs mt-1 flex items-center gap-1",
-                  isExpired ? "text-red-500" : "text-slate-400",
-                )}
-              >
-                <Clock className="h-3 w-3" />
-                {isExpired
-                  ? "Expiré"
-                  : `Expire le ${formatTimestamp(expiresAt)}`}
-              </p>
-            )}
+            <p className="mt-1 text-xs text-slate-500">
+              {batchState.proposer
+                ? `Proposé par ${shortenAddress(batchState.proposer)}`
+                : "Chargement du proposer…"}
+            </p>
           </div>
+
           <div className="flex flex-col items-end gap-2 shrink-0">
-            {statusNum !== undefined && (
+            {statusNum !== null ? (
               <span className={cn("badge", BATCH_STATUS_COLORS[statusNum])}>
                 {BATCH_STATUS_LABELS[statusNum]}
               </span>
-            )}
-            {isExpired && (
-              <span className="badge bg-orange-100 text-orange-700 border-orange-200">
-                Expiré
+            ) : (
+              <span className="badge bg-slate-100 text-slate-600 border-slate-200">
+                Chargement…
               </span>
             )}
           </div>
@@ -319,239 +331,19 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
 
         <div className="flex items-center gap-1.5 text-sm text-slate-500">
           <Users className="h-4 w-4" />
-          {studentCount !== undefined
-            ? `${studentCount.toString()} étudiants`
-            : "—"}
+          {batchState.studentCount !== null
+            ? `${batchState.studentCount.toString()} étudiants`
+            : "Chargement…"}
         </div>
 
-        {isCancelled && cancelReasonOnChain && (
+        {batchState.cancelReason && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 flex items-start gap-2">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span>Motif : {cancelReasonOnChain}</span>
-          </div>
-        )}
-
-        {!isCancelled && statusNum !== undefined && (
-          <div className="flex gap-1">
-            {[0, 1, 2, 3, 4].map((step) => (
-              <div
-                key={step}
-                className={cn(
-                  "h-1.5 flex-1 rounded-full transition",
-                  statusNum >= step ? "bg-uni-blue" : "bg-slate-200",
-                )}
-              />
-            ))}
-          </div>
-        )}
-
-        {deliberation &&
-          deliberation[1] &&
-          deliberation[1] !== "0x0000000000000000000000000000000000000000" && (
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold">
-                <Gavel className="h-3.5 w-3.5" />
-                Délibération du jury
-              </div>
-              <p className="font-mono text-[10px] text-indigo-600 break-all">
-                Conseil : {deliberation[1]}
-              </p>
-              {deliberation[2] && (
-                <p className="italic">« {deliberation[2]} »</p>
-              )}
-            </div>
-          )}
-
-        {canDeliberate && showDelibForm && (
-          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-3">
-            <div className="text-sm font-semibold text-indigo-800">
-              Procès-verbal & Rachats
-            </div>
-            <p className="text-xs text-indigo-700">
-              Complétez les transcript CIDs et les rachats si nécessaire.
-              Laissez vide le rachat si aucun bump n est requis.
-            </p>
-
-            {delibError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                {delibError}
-              </div>
-            )}
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-slate-600">
-                    <th className="p-2">#</th>
-                    <th className="p-2">Étudiant</th>
-                    <th className="p-2">Transcript CID</th>
-                    <th className="p-2">Base</th>
-                    <th className="p-2">Final</th>
-                    <th className="p-2">Progression</th>
-                    <th className="p-2">Rachat (moy.)</th>
-                    <th className="p-2">Motif</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pvRows.length > 0 ? (
-                    pvRows.map((r) => {
-                      const idx = r.idx;
-                      const studentName = r.student.studentName ?? "—";
-                      const base =
-                        r.pv.baseMoyenne ?? r.student.baseMoyenne ?? 0;
-                      const finalM = r.pv.finalMoyenne ?? 0;
-                      const status = Number(r.pv.status ?? 0);
-                      const existing = rachatsState[idx] || {
-                        bumped: "",
-                        reason: "",
-                        transcriptCID: "",
-                      };
-                      return (
-                        <tr key={idx} className="align-top border-t">
-                          <td className="p-2 align-top">{idx + 1}</td>
-                          <td className="p-2 align-top">{studentName}</td>
-                          <td className="p-2">
-                            <input
-                              className="input input-sm font-mono"
-                              placeholder="CID transcript"
-                              value={existing.transcriptCID}
-                              onChange={(e) =>
-                                setRachatsState((s) => ({
-                                  ...s,
-                                  [idx]: {
-                                    ...(s[idx] || {
-                                      bumped: "",
-                                      reason: "",
-                                      transcriptCID: "",
-                                    }),
-                                    transcriptCID: e.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </td>
-                          <td className="p-2 font-mono">
-                            {formatMoyenne(base)}
-                          </td>
-                          <td className="p-2 font-mono">
-                            {formatMoyenne(finalM)}
-                          </td>
-                          <td className="p-2">
-                            <span
-                              className={cn(
-                                "rounded px-2 py-0.5 text-[11px] font-semibold",
-                                PROGRESSION_COLORS[status],
-                              )}
-                            >
-                              {PROGRESSION_LABELS[status]}
-                            </span>
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="input input-sm w-20 font-mono"
-                              placeholder="—"
-                              value={existing.bumped}
-                              onChange={(e) =>
-                                setRachatsState((s) => ({
-                                  ...s,
-                                  [idx]: {
-                                    ...(s[idx] || {
-                                      bumped: "",
-                                      reason: "",
-                                      transcriptCID: "",
-                                    }),
-                                    bumped: e.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              className="input input-sm"
-                              placeholder="Motif du rachat"
-                              value={existing.reason}
-                              onChange={(e) =>
-                                setRachatsState((s) => ({
-                                  ...s,
-                                  [idx]: {
-                                    ...(s[idx] || {
-                                      bumped: "",
-                                      reason: "",
-                                      transcriptCID: "",
-                                    }),
-                                    reason: e.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={8} className="p-2 text-xs text-slate-500">
-                        Chargement des PV…
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-indigo-800">
-                Note du jury (optionnel)
-              </label>
-              <textarea
-                className="input min-h-[60px] resize-none text-xs"
-                placeholder="ex: Jury réuni le 15/06/2024. Tous les étudiants ont été validés à l'unanimité."
-                value={delibNote}
-                onChange={(e) => setDelibNote(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                className="btn-secondary text-xs"
-                disabled={loading}
-                onClick={() => {
-                  setShowDelibForm(false);
-                  setDelibNote("");
-                }}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className="btn-primary text-xs bg-indigo-700 hover:bg-indigo-800"
-                disabled={loading}
-                onClick={handleDeliberate}
-              >
-                {loading ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Gavel className="h-3 w-3" />
-                )}
-                Confirmer la délibération
-              </button>
-            </div>
+            <span>Motif : {batchState.cancelReason}</span>
           </div>
         )}
 
         <div className="flex flex-wrap gap-2 pt-1">
-          {canDeliberate && !showDelibForm && (
-            <button
-              className="btn-primary text-xs bg-indigo-700 hover:bg-indigo-800"
-              disabled={loading}
-              onClick={() => setShowDelibForm(true)}
-            >
-              <Gavel className="h-3 w-3" />
-              Délibérer (Conseil)
-            </button>
-          )}
           {canSignDean && (
             <button
               className="btn-primary text-xs"
@@ -566,6 +358,7 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
               Signer (Doyen)
             </button>
           )}
+
           {canSignRector && (
             <button
               className="btn-primary text-xs"
@@ -580,6 +373,7 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
               Signer (Recteur)
             </button>
           )}
+
           {canFinalize && (
             <button
               className="btn-primary text-xs bg-green-700 hover:bg-green-800"
@@ -594,11 +388,13 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
               Finaliser le lot
             </button>
           )}
-          {isMinted && (
+
+          {statusNum === 3 && (
             <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
               <CheckCircle className="h-4 w-4" /> Diplômes émis
             </span>
           )}
+
           {canCancel && (
             <button
               className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition disabled:opacity-50"
@@ -616,9 +412,14 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
             Tx: {txHash}
           </p>
         )}
+
+        {finalizeError && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {finalizeError}
+          </p>
+        )}
       </div>
 
-      {/* Cancel modal */}
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl space-y-4">

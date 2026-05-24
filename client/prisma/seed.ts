@@ -281,16 +281,24 @@ async function main() {
   });
 
   // Add Annual Average for Amine (Formula: Total Weighted / Total Coeffs = 14.47)
-  await prisma.annualAverage.create({
-    data: {
-      studentId: student1.id,
-      yearLevel: YearLevel.L3,
-      academicYear,
-      average: 14.47,
-      totalCredits: 60, // Algerian rule: If average >= 10, you acquire all 60 credits automatically
-      status: AdmissionStatus.ADMIS_MOYENNE,
-    },
-  });
+  const years = [YearLevel.L1, YearLevel.L2, YearLevel.L3];
+  const academicYears = ["2023-2024", "2024-2025", "2025-2026"];
+
+  // --- Apply this loop to each student (Amine, Sarah, Anis) ---
+  // For each student, we create 3 records instead of 1
+  for (let i = 0; i < 3; i++) {
+    await prisma.annualAverage.create({
+      data: {
+        studentId: student1.id, // Replace with student2.id / student3.id respectively
+        yearLevel: years[i],
+        academicYear: academicYears[i],
+        // Use logic to generate or map your existing averages to the 3-year sequence
+        average: 10.0 + i * 1.5 + Math.random() * 0.5,
+        totalCredits: 60,
+        status: AdmissionStatus.ADMIS_MOYENNE,
+      },
+    });
+  }
 
   // ==========================================
   // CASE 2: SARAH (L2) - ADMIS PAR CREDITS (Compensated via >= 30 credits)
@@ -350,17 +358,20 @@ async function main() {
     ],
   });
 
-  // Annual calculation: Average is roughly 8.77 (Failed), but she has exactly 30 credits from S1!
-  await prisma.annualAverage.create({
-    data: {
-      studentId: student2.id,
-      yearLevel: YearLevel.L2,
-      academicYear,
-      average: 8.77,
-      totalCredits: 30, // Admise because totalCredits >= 30
-      status: AdmissionStatus.ADMIS_CREDITS,
-    },
-  });
+  // For each student, we create 3 records instead of 1
+  for (let i = 0; i < 3; i++) {
+    await prisma.annualAverage.create({
+      data: {
+        studentId: student2.id, // Replace with student2.id / student3.id respectively
+        yearLevel: years[i],
+        academicYear: academicYears[i],
+        // Use logic to generate or map your existing averages to the 3-year sequence
+        average: 10.0 + i * 1.5 + Math.random() * 0.5,
+        totalCredits: 60,
+        status: AdmissionStatus.ADMIS_MOYENNE,
+      },
+    });
+  }
 
   // ==========================================
   // CASE 3: ANIS (L1) - AJOURNE (Failed / Retakes Year)
@@ -420,16 +431,21 @@ async function main() {
   });
 
   // Total credits = 21 (Less than 30) & Average = 7.18 -> Ajourné
-  await prisma.annualAverage.create({
-    data: {
-      studentId: student3.id,
-      yearLevel: YearLevel.L1,
-      academicYear,
-      average: 7.18,
-      totalCredits: 21,
-      status: AdmissionStatus.AJOURNE,
-    },
-  });
+
+  // For each student, we create 3 records instead of 1
+  for (let i = 0; i < 3; i++) {
+    await prisma.annualAverage.create({
+      data: {
+        studentId: student3.id, // Replace with student2.id / student3.id respectively
+        yearLevel: years[i],
+        academicYear: academicYears[i],
+        // Use logic to generate or map your existing averages to the 3-year sequence
+        average: 10.0 + i * 1.5 + Math.random() * 0.5,
+        totalCredits: 60,
+        status: AdmissionStatus.ADMIS_MOYENNE,
+      },
+    });
+  }
 
   console.log(
     "🎉 Database seeding completed successfully with all LMD pathways!",

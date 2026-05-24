@@ -7,16 +7,8 @@ import {
   useWaitForTransactionReceipt,
   useAccount,
 } from "wagmi";
-import {
-  publicClient,
-  diplomaContract,
-  ipfsUrl,
-  ADMIN_ROLE,
-} from "@/lib/contract";
-import {
-  DiplomaCard,
-  type DiplomaMetadata,
-} from "@/components/verify/DiplomaCard";
+import { publicClient, diplomaContract, ADMIN_ROLE } from "@/lib/contract";
+import { DiplomaCard } from "@/components/verify/DiplomaCard";
 import { DiplomaQR } from "@/components/verify/DiplomaQR";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
 import { DIPLOMA_ABI } from "@/lib/abi";
@@ -27,63 +19,42 @@ interface Props {
   params: Promise<{ tokenId: string }>;
 }
 
+interface DiplomaRecord {
+  studentName: string;
+  matricule: string;
+  department: string;
+  graduationYear: number;
+  pfeNote: number;
+  ipfsCID: string;
+  batchId: bigint;
+  mintedAt: bigint;
+  valid: boolean;
+  revocationReason: string;
+}
+
+function normalizeMatricule(input: string): string {
+  return input.trim().replace(/\s+/g, "");
+}
+
 export default function VerifyTokenPage({ params }: Props) {
   const { tokenId: rawId } = use(params);
   const [resolvedTokenId, setResolvedTokenId] = useState<bigint | null>(null);
+  const [diploma, setDiploma] = useState<DiplomaRecord | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [isResolving, setIsResolving] = useState(true);
-  console.log("Raw tokenId from URL:", rawId);
-  console.log("Resolved tokenId:", resolvedTokenId);
-  const tokenId = resolvedTokenId;
-
-  const { address } = useAccount();
-  const [metadata, setMetadata] = useState<DiplomaMetadata | null>(null);
-  const [metaLoading, setMetaLoading] = useState(false);
   const [owner, setOwner] = useState<string>("—");
   const [showRevokeModal, setShowRevokeModal] = useState(false);
   const [revokeReason, setRevokeReason] = useState("");
 
-  const {
-    data: record,
-    isLoading,
-    error,
-    refetch,
-  } = useReadContract({
-    ...diplomaContract,
-    functionName: "getDiplomaRecord",
-    args: [tokenId ?? 0n],
-    query: { enabled: tokenId !== null },
-  });
-
-  const { data: verificationCount, refetch: refetchCount } = useReadContract({
-    ...diplomaContract,
-    functionName: "verificationCount",
-    args: [tokenId ?? 0n],
-    query: { enabled: tokenId !== null },
-  });
+  const { address } = useAccount();
 
   const { data: isAdmin } = useReadContract({
     address: CONTRACT_ADDRESS,
     abi: DIPLOMA_ABI,
     functionName: "hasRole",
-    args: [ADMIN_ROLE, address!],
+    args: [ADMIN_ROLE, address ?? "0x0000000000000000000000000000000000000000"],
     query: { enabled: !!address },
   });
-  const { isUsed } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: DIPLOMA_ABI,
-    functionName: "isMatriculeUsed",
-    args: [rawId],
-  });
-  console.log("Is matricule used?", isUsed);
-  const { tokenId: matriculeTokenId, exists } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: DIPLOMA_ABI,
-    functionName: "getTokenByMatricule",
-    args: [rawId],
-    query: { enabled: !!rawId },
-  });
-  (console.log(matriculeTokenId), console.log(exists));
 
   const {
     writeContract,
@@ -94,26 +65,37 @@ export default function VerifyTokenPage({ params }: Props) {
     useWaitForTransactionReceipt({ hash: revokeTxHash });
 
   useEffect(() => {
-    if (isRevokeSuccess) {
-      refetch();
-      refetchCount();
+    if (!isRevokeSuccess || !diploma) return;
 
-      // Pushes the UI update to the next tick to avoid cascading renders
-      setTimeout(() => {
-        setShowRevokeModal(false);
-        setRevokeReason("");
-      }, 0);
-    }
-  }, [isRevokeSuccess, refetch, refetchCount]);
+    const timer = window.setTimeout(() => {
+      setDiploma((current) =>
+        current
+          ? {
+              ...current,
+              valid: false,
+              revocationReason: revokeReason.trim() || current.revocationReason,
+            }
+          : current,
+      );
+      setShowRevokeModal(false);
+      setRevokeReason("");
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [diploma, isRevokeSuccess, revokeReason]);
 
   useEffect(() => {
     let active = true;
-    setResolvedTokenId(null);
-    setResolveError(null);
-    setIsResolving(true);
 
-    const resolveToken = async () => {
-      if (!rawId || rawId.trim() === "") {
+    const resolveDiploma = async () => {
+      const input = rawId?.trim() ?? "";
+
+      setResolvedTokenId(null);
+      setDiploma(null);
+      setResolveError(null);
+      setIsResolving(true);
+
+      if (!input) {
         if (active) {
           setResolveError("Token ou matricule invalide.");
           setIsResolving(false);
@@ -121,62 +103,70 @@ export default function VerifyTokenPage({ params }: Props) {
         return;
       }
 
-      // First try: matricule lookup
       try {
-        const result = (await publicClient.readContract({
-          ...diplomaContract,
-          functionName: "getTokenByMatricule",
-          args: [rawId],
-        })) as unknown;
-        console.log("Matricule lookup result:", result);
-        if (
-          result &&
-          typeof result === "object" &&
-          "tokenId" in result &&
-          "exists" in result
-        ) {
-          const { tokenId: matriculeTokenId, exists } = result as {
-            tokenId: bigint;
-            exists: boolean;
-          };
+        const normalizedMatricule = normalizeMatricule(input);
 
-          if (exists && matriculeTokenId !== 0n) {
-            if (active) {
-              setResolvedTokenId(matriculeTokenId);
-              setIsResolving(false);
-            }
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("Matricule lookup failed:", err);
-        // continue to tokenId fallback
-      }
+        if (/^\d+$/.test(input)) {
+          const tokenId = BigInt(input);
 
-      // Second try: numeric tokenId
-      if (/^\d+$/.test(rawId)) {
-        try {
-          const parsedId = BigInt(rawId);
-          if (active) {
-            setResolvedTokenId(parsedId);
+          try {
+            await publicClient.readContract({
+              ...diplomaContract,
+              functionName: "ownerOf",
+              args: [tokenId],
+            });
+
+            const record = (await publicClient.readContract({
+              ...diplomaContract,
+              functionName: "getDiplomaRecord",
+              args: [tokenId],
+            })) as DiplomaRecord;
+
+            if (!active) return;
+
+            setResolvedTokenId(tokenId);
+            setDiploma(record);
             setIsResolving(false);
+            return;
+          } catch {
+            // Numeric input may actually be a matricule on this deployment.
           }
-          return;
-        } catch {
-          // fall through to failure
         }
-      }
 
-      if (active) {
+        const [tokenId, exists] = (await publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: DIPLOMA_ABI,
+          functionName: "getTokenByMatricule",
+          args: [normalizedMatricule],
+        })) as [bigint, boolean];
+
+        if (!exists) {
+          throw new Error("matricule not found");
+        }
+
+        const record = (await publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: DIPLOMA_ABI,
+          functionName: "getDiplomaByMatricule",
+          args: [normalizedMatricule],
+        })) as DiplomaRecord;
+
+        if (!active) return;
+
+        setResolvedTokenId(tokenId);
+        setDiploma(record);
+        setIsResolving(false);
+      } catch {
+        if (!active) return;
+
         setResolveError(
-          `"${rawId}" introuvable. Vérifiez que c'est un matricule valide ou un numéro de token existant. ` +
-            "Le diplôme doit d'abord être finalisé pour être recherchable par matricule.",
+          `"${input}" introuvable. Vérifiez que le matricule est valide et que le diplôme a bien été finalisé.`,
         );
         setIsResolving(false);
       }
     };
 
-    void resolveToken();
+    void resolveDiploma();
 
     return () => {
       active = false;
@@ -184,58 +174,39 @@ export default function VerifyTokenPage({ params }: Props) {
   }, [rawId]);
 
   useEffect(() => {
-    if (!record || tokenId === null) return;
+    if (resolvedTokenId === null) return;
 
     const fetchOwner = async () => {
       try {
-        const o = await publicClient.readContract({
+        const ownerAddress = (await publicClient.readContract({
           ...diplomaContract,
           functionName: "ownerOf",
-          args: [tokenId],
-        });
-        setOwner(o as string);
+          args: [resolvedTokenId],
+        })) as string;
+
+        setOwner(ownerAddress);
       } catch {
         setOwner("—");
       }
     };
 
-    const fetchMeta = async () => {
-      setMetaLoading(true);
-      try {
-        const url = ipfsUrl(record.metadataCID);
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = (await res.json()) as DiplomaMetadata;
-          setMetadata(json);
-        }
-      } catch {
-        setMetadata(null);
-      } finally {
-        setMetaLoading(false);
-      }
-    };
-
-    fetchOwner();
-    fetchMeta();
-  }, [record, tokenId]);
+    void fetchOwner();
+  }, [resolvedTokenId]);
 
   const revokeLoading = isRevoking || isRevokeConfirming;
 
   const handleRevokeConfirm = () => {
-    if (!revokeReason.trim() || tokenId === null) return;
+    if (!revokeReason.trim() || resolvedTokenId === null) return;
+
     writeContract({
       ...diplomaContract,
       functionName: "revokeDiploma",
-      args: [tokenId, revokeReason.trim()],
+      args: [resolvedTokenId, revokeReason.trim()],
     });
   };
 
-  const displayLoading = isResolving || isLoading;
-  const displayError =
-    resolveError ??
-    (!displayLoading && error
-      ? "Token introuvable ou contrat non déployé."
-      : null);
+  const displayLoading = isResolving;
+  const displayError = resolveError;
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-10 space-y-6">
@@ -247,7 +218,7 @@ export default function VerifyTokenPage({ params }: Props) {
           <ArrowLeft className="h-4 w-4" /> Retour à la recherche
         </Link>
 
-        {record && isAdmin && record.valid && (
+        {diploma && isAdmin && diploma.valid && (
           <button
             onClick={() => setShowRevokeModal(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition"
@@ -271,7 +242,8 @@ export default function VerifyTokenPage({ params }: Props) {
           <div className="text-center">
             <p className="font-semibold">{displayError}</p>
             <p className="text-sm text-red-400 mt-1">
-              Le token {rawId} n existe pas ou le contrat n est pas disponible.
+              Le token {rawId} n&apos;existe pas ou le contrat n&apos;est pas
+              disponible.
             </p>
           </div>
           <Link href="/verify" className="btn-secondary text-sm">
@@ -280,49 +252,21 @@ export default function VerifyTokenPage({ params }: Props) {
         </div>
       )}
 
-      {record && !displayLoading && !displayError && (
+      {diploma && !displayLoading && !displayError && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            {metaLoading ? (
-              <div className="card flex items-center gap-3 py-10 justify-center text-slate-400">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-sm">
-                  Chargement des métadonnées IPFS…
-                </span>
-              </div>
-            ) : (
-              <DiplomaCard
-                tokenId={tokenId!}
-                owner={owner}
-                record={{
-                  studentName: record.studentName,
-                  matricule: record.matricule,
-                  dateOfBirth: record.dateOfBirth,
-                  placeOfBirth: record.placeOfBirth,
-                  metadataCID: record.metadataCID,
-                  sha256Hash: record.sha256Hash,
-                  specialty: record.specialty,
-                  cycle: record.cycle,
-                  mention: record.mention,
-                  graduationYear: record.graduationYear,
-                  department: record.department,
-                  batchId: record.batchId,
-                  mintedAt: record.mintedAt,
-                  valid: record.valid,
-                  revocationReason: record.revocationReason,
-                }}
-                verificationCount={verificationCount}
-                metadata={metadata}
-              />
-            )}
+            <DiplomaCard
+              tokenId={resolvedTokenId!}
+              owner={owner}
+              record={diploma}
+            />
           </div>
           <div>
-            <DiplomaQR tokenId={tokenId!} />
+            <DiplomaQR tokenId={resolvedTokenId!} />
           </div>
         </div>
       )}
 
-      {/* Revocation modal */}
       {showRevokeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl space-y-4">
@@ -331,7 +275,9 @@ export default function VerifyTokenPage({ params }: Props) {
                 <h2 className="text-base font-bold text-slate-900">
                   Révoquer le diplôme
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Token #{rawId}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Token #{resolvedTokenId?.toString() ?? rawId}
+                </p>
               </div>
               <button
                 onClick={() => setShowRevokeModal(false)}

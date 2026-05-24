@@ -20,8 +20,18 @@ export type StudentModel = runtime.Types.Result.DefaultSelection<Prisma.$Student
 
 export type AggregateStudent = {
   _count: StudentCountAggregateOutputType | null
+  _avg: StudentAvgAggregateOutputType | null
+  _sum: StudentSumAggregateOutputType | null
   _min: StudentMinAggregateOutputType | null
   _max: StudentMaxAggregateOutputType | null
+}
+
+export type StudentAvgAggregateOutputType = {
+  graduationYear: number | null
+}
+
+export type StudentSumAggregateOutputType = {
+  graduationYear: number | null
 }
 
 export type StudentMinAggregateOutputType = {
@@ -31,6 +41,9 @@ export type StudentMinAggregateOutputType = {
   lastName: string | null
   email: string | null
   dateOfBirth: Date | null
+  wallet: string | null
+  department: string | null
+  graduationYear: number | null
   currentYear: $Enums.YearLevel | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -43,6 +56,9 @@ export type StudentMaxAggregateOutputType = {
   lastName: string | null
   email: string | null
   dateOfBirth: Date | null
+  wallet: string | null
+  department: string | null
+  graduationYear: number | null
   currentYear: $Enums.YearLevel | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -55,12 +71,23 @@ export type StudentCountAggregateOutputType = {
   lastName: number
   email: number
   dateOfBirth: number
+  wallet: number
+  department: number
+  graduationYear: number
   currentYear: number
   createdAt: number
   updatedAt: number
   _all: number
 }
 
+
+export type StudentAvgAggregateInputType = {
+  graduationYear?: true
+}
+
+export type StudentSumAggregateInputType = {
+  graduationYear?: true
+}
 
 export type StudentMinAggregateInputType = {
   id?: true
@@ -69,6 +96,9 @@ export type StudentMinAggregateInputType = {
   lastName?: true
   email?: true
   dateOfBirth?: true
+  wallet?: true
+  department?: true
+  graduationYear?: true
   currentYear?: true
   createdAt?: true
   updatedAt?: true
@@ -81,6 +111,9 @@ export type StudentMaxAggregateInputType = {
   lastName?: true
   email?: true
   dateOfBirth?: true
+  wallet?: true
+  department?: true
+  graduationYear?: true
   currentYear?: true
   createdAt?: true
   updatedAt?: true
@@ -93,6 +126,9 @@ export type StudentCountAggregateInputType = {
   lastName?: true
   email?: true
   dateOfBirth?: true
+  wallet?: true
+  department?: true
+  graduationYear?: true
   currentYear?: true
   createdAt?: true
   updatedAt?: true
@@ -137,6 +173,18 @@ export type StudentAggregateArgs<ExtArgs extends runtime.Types.Extensions.Intern
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
+   * Select which fields to average
+  **/
+  _avg?: StudentAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
+   * Select which fields to sum
+  **/
+  _sum?: StudentSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
    * Select which fields to find the minimum value
   **/
   _min?: StudentMinAggregateInputType
@@ -167,6 +215,8 @@ export type StudentGroupByArgs<ExtArgs extends runtime.Types.Extensions.Internal
   take?: number
   skip?: number
   _count?: StudentCountAggregateInputType | true
+  _avg?: StudentAvgAggregateInputType
+  _sum?: StudentSumAggregateInputType
   _min?: StudentMinAggregateInputType
   _max?: StudentMaxAggregateInputType
 }
@@ -178,10 +228,15 @@ export type StudentGroupByOutputType = {
   lastName: string
   email: string
   dateOfBirth: Date | null
+  wallet: string | null
+  department: string | null
+  graduationYear: number | null
   currentYear: $Enums.YearLevel
   createdAt: Date
   updatedAt: Date
   _count: StudentCountAggregateOutputType | null
+  _avg: StudentAvgAggregateOutputType | null
+  _sum: StudentSumAggregateOutputType | null
   _min: StudentMinAggregateOutputType | null
   _max: StudentMaxAggregateOutputType | null
 }
@@ -211,6 +266,9 @@ export type StudentWhereInput = {
   lastName?: Prisma.StringFilter<"Student"> | string
   email?: Prisma.StringFilter<"Student"> | string
   dateOfBirth?: Prisma.DateTimeNullableFilter<"Student"> | Date | string | null
+  wallet?: Prisma.StringNullableFilter<"Student"> | string | null
+  department?: Prisma.StringNullableFilter<"Student"> | string | null
+  graduationYear?: Prisma.IntNullableFilter<"Student"> | number | null
   currentYear?: Prisma.EnumYearLevelFilter<"Student"> | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFilter<"Student"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Student"> | Date | string
@@ -226,6 +284,9 @@ export type StudentOrderByWithRelationInput = {
   lastName?: Prisma.SortOrder
   email?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrderInput | Prisma.SortOrder
+  wallet?: Prisma.SortOrderInput | Prisma.SortOrder
+  department?: Prisma.SortOrderInput | Prisma.SortOrder
+  graduationYear?: Prisma.SortOrderInput | Prisma.SortOrder
   currentYear?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -238,19 +299,22 @@ export type StudentWhereUniqueInput = Prisma.AtLeast<{
   id?: string
   matricule?: string
   email?: string
+  wallet?: string
   AND?: Prisma.StudentWhereInput | Prisma.StudentWhereInput[]
   OR?: Prisma.StudentWhereInput[]
   NOT?: Prisma.StudentWhereInput | Prisma.StudentWhereInput[]
   firstName?: Prisma.StringFilter<"Student"> | string
   lastName?: Prisma.StringFilter<"Student"> | string
   dateOfBirth?: Prisma.DateTimeNullableFilter<"Student"> | Date | string | null
+  department?: Prisma.StringNullableFilter<"Student"> | string | null
+  graduationYear?: Prisma.IntNullableFilter<"Student"> | number | null
   currentYear?: Prisma.EnumYearLevelFilter<"Student"> | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFilter<"Student"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Student"> | Date | string
   enrollments?: Prisma.EnrollmentListRelationFilter
   transcripts?: Prisma.TranscriptListRelationFilter
   annualAverages?: Prisma.AnnualAverageListRelationFilter
-}, "id" | "matricule" | "email">
+}, "id" | "matricule" | "email" | "wallet">
 
 export type StudentOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -259,12 +323,17 @@ export type StudentOrderByWithAggregationInput = {
   lastName?: Prisma.SortOrder
   email?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrderInput | Prisma.SortOrder
+  wallet?: Prisma.SortOrderInput | Prisma.SortOrder
+  department?: Prisma.SortOrderInput | Prisma.SortOrder
+  graduationYear?: Prisma.SortOrderInput | Prisma.SortOrder
   currentYear?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.StudentCountOrderByAggregateInput
+  _avg?: Prisma.StudentAvgOrderByAggregateInput
   _max?: Prisma.StudentMaxOrderByAggregateInput
   _min?: Prisma.StudentMinOrderByAggregateInput
+  _sum?: Prisma.StudentSumOrderByAggregateInput
 }
 
 export type StudentScalarWhereWithAggregatesInput = {
@@ -277,6 +346,9 @@ export type StudentScalarWhereWithAggregatesInput = {
   lastName?: Prisma.StringWithAggregatesFilter<"Student"> | string
   email?: Prisma.StringWithAggregatesFilter<"Student"> | string
   dateOfBirth?: Prisma.DateTimeNullableWithAggregatesFilter<"Student"> | Date | string | null
+  wallet?: Prisma.StringNullableWithAggregatesFilter<"Student"> | string | null
+  department?: Prisma.StringNullableWithAggregatesFilter<"Student"> | string | null
+  graduationYear?: Prisma.IntNullableWithAggregatesFilter<"Student"> | number | null
   currentYear?: Prisma.EnumYearLevelWithAggregatesFilter<"Student"> | $Enums.YearLevel
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Student"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Student"> | Date | string
@@ -289,6 +361,9 @@ export type StudentCreateInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -304,6 +379,9 @@ export type StudentUncheckedCreateInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -319,6 +397,9 @@ export type StudentUpdateInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -334,6 +415,9 @@ export type StudentUncheckedUpdateInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -349,6 +433,9 @@ export type StudentCreateManyInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -361,6 +448,9 @@ export type StudentUpdateManyMutationInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -373,6 +463,9 @@ export type StudentUncheckedUpdateManyInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -385,9 +478,16 @@ export type StudentCountOrderByAggregateInput = {
   lastName?: Prisma.SortOrder
   email?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  wallet?: Prisma.SortOrder
+  department?: Prisma.SortOrder
+  graduationYear?: Prisma.SortOrder
   currentYear?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type StudentAvgOrderByAggregateInput = {
+  graduationYear?: Prisma.SortOrder
 }
 
 export type StudentMaxOrderByAggregateInput = {
@@ -397,6 +497,9 @@ export type StudentMaxOrderByAggregateInput = {
   lastName?: Prisma.SortOrder
   email?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  wallet?: Prisma.SortOrder
+  department?: Prisma.SortOrder
+  graduationYear?: Prisma.SortOrder
   currentYear?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -409,9 +512,16 @@ export type StudentMinOrderByAggregateInput = {
   lastName?: Prisma.SortOrder
   email?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  wallet?: Prisma.SortOrder
+  department?: Prisma.SortOrder
+  graduationYear?: Prisma.SortOrder
   currentYear?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+}
+
+export type StudentSumOrderByAggregateInput = {
+  graduationYear?: Prisma.SortOrder
 }
 
 export type StudentScalarRelationFilter = {
@@ -425,6 +535,18 @@ export type StringFieldUpdateOperationsInput = {
 
 export type NullableDateTimeFieldUpdateOperationsInput = {
   set?: Date | string | null
+}
+
+export type NullableStringFieldUpdateOperationsInput = {
+  set?: string | null
+}
+
+export type NullableIntFieldUpdateOperationsInput = {
+  set?: number | null
+  increment?: number
+  decrement?: number
+  multiply?: number
+  divide?: number
 }
 
 export type EnumYearLevelFieldUpdateOperationsInput = {
@@ -484,6 +606,9 @@ export type StudentCreateWithoutEnrollmentsInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -498,6 +623,9 @@ export type StudentUncheckedCreateWithoutEnrollmentsInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -528,6 +656,9 @@ export type StudentUpdateWithoutEnrollmentsInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -542,6 +673,9 @@ export type StudentUncheckedUpdateWithoutEnrollmentsInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -556,6 +690,9 @@ export type StudentCreateWithoutTranscriptsInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -570,6 +707,9 @@ export type StudentUncheckedCreateWithoutTranscriptsInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -600,6 +740,9 @@ export type StudentUpdateWithoutTranscriptsInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -614,6 +757,9 @@ export type StudentUncheckedUpdateWithoutTranscriptsInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -628,6 +774,9 @@ export type StudentCreateWithoutAnnualAveragesInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -642,6 +791,9 @@ export type StudentUncheckedCreateWithoutAnnualAveragesInput = {
   lastName: string
   email: string
   dateOfBirth?: Date | string | null
+  wallet?: string | null
+  department?: string | null
+  graduationYear?: number | null
   currentYear?: $Enums.YearLevel
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -672,6 +824,9 @@ export type StudentUpdateWithoutAnnualAveragesInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -686,6 +841,9 @@ export type StudentUncheckedUpdateWithoutAnnualAveragesInput = {
   lastName?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
   dateOfBirth?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallet?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  graduationYear?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   currentYear?: Prisma.EnumYearLevelFieldUpdateOperationsInput | $Enums.YearLevel
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -749,6 +907,9 @@ export type StudentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   lastName?: boolean
   email?: boolean
   dateOfBirth?: boolean
+  wallet?: boolean
+  department?: boolean
+  graduationYear?: boolean
   currentYear?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -765,6 +926,9 @@ export type StudentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   lastName?: boolean
   email?: boolean
   dateOfBirth?: boolean
+  wallet?: boolean
+  department?: boolean
+  graduationYear?: boolean
   currentYear?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -777,6 +941,9 @@ export type StudentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   lastName?: boolean
   email?: boolean
   dateOfBirth?: boolean
+  wallet?: boolean
+  department?: boolean
+  graduationYear?: boolean
   currentYear?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -789,12 +956,15 @@ export type StudentSelectScalar = {
   lastName?: boolean
   email?: boolean
   dateOfBirth?: boolean
+  wallet?: boolean
+  department?: boolean
+  graduationYear?: boolean
   currentYear?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type StudentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "matricule" | "firstName" | "lastName" | "email" | "dateOfBirth" | "currentYear" | "createdAt" | "updatedAt", ExtArgs["result"]["student"]>
+export type StudentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "matricule" | "firstName" | "lastName" | "email" | "dateOfBirth" | "wallet" | "department" | "graduationYear" | "currentYear" | "createdAt" | "updatedAt", ExtArgs["result"]["student"]>
 export type StudentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   enrollments?: boolean | Prisma.Student$enrollmentsArgs<ExtArgs>
   transcripts?: boolean | Prisma.Student$transcriptsArgs<ExtArgs>
@@ -818,6 +988,9 @@ export type $StudentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     lastName: string
     email: string
     dateOfBirth: Date | null
+    wallet: string | null
+    department: string | null
+    graduationYear: number | null
     currentYear: $Enums.YearLevel
     createdAt: Date
     updatedAt: Date
@@ -1253,6 +1426,9 @@ export interface StudentFieldRefs {
   readonly lastName: Prisma.FieldRef<"Student", 'String'>
   readonly email: Prisma.FieldRef<"Student", 'String'>
   readonly dateOfBirth: Prisma.FieldRef<"Student", 'DateTime'>
+  readonly wallet: Prisma.FieldRef<"Student", 'String'>
+  readonly department: Prisma.FieldRef<"Student", 'String'>
+  readonly graduationYear: Prisma.FieldRef<"Student", 'Int'>
   readonly currentYear: Prisma.FieldRef<"Student", 'YearLevel'>
   readonly createdAt: Prisma.FieldRef<"Student", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Student", 'DateTime'>

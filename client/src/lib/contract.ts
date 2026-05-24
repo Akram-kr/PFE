@@ -28,32 +28,29 @@ export const DEFAULT_ADMIN_ROLE =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
 
 // ── Batch status labels ───────────────────────────────────────────────────────
-// 0 Proposed | 1 Deliberated | 2 SignedByDean | 3 SignedByRector | 4 Finalized | 5 Cancelled
+// 0 Proposed | 1 SignedByDean | 2 SignedByRector | 3 Finalized | 4 Cancelled
 export const BATCH_STATUS_LABELS: Record<number, string> = {
   0: "Proposé",
-  1: "Délibéré",
-  2: "Signé par le Doyen",
-  3: "Signé par le Recteur",
-  4: "Finalisé",
-  5: "Annulé",
+  1: "Signé par le Doyen",
+  2: "Signé par le Recteur",
+  3: "Finalisé",
+  4: "Annulé",
 };
 
 export const BATCH_STATUS = {
   Proposed: 0,
-  Deliberated: 1,
-  SignedByDean: 2,
-  SignedByRector: 3,
-  Finalized: 4,
-  Cancelled: 5,
+  SignedByDean: 1,
+  SignedByRector: 2,
+  Finalized: 3,
+  Cancelled: 4,
 } as const;
 
 export const BATCH_STATUS_COLORS: Record<number, string> = {
   0: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  1: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  2: "bg-blue-100 text-blue-800 border-blue-200",
-  3: "bg-purple-100 text-purple-800 border-purple-200",
-  4: "bg-green-100 text-green-800 border-green-200",
-  5: "bg-red-100 text-red-800 border-red-200",
+  1: "bg-blue-100 text-blue-800 border-blue-200",
+  2: "bg-purple-100 text-purple-800 border-purple-200",
+  3: "bg-green-100 text-green-800 border-green-200",
+  4: "bg-red-100 text-red-800 border-red-200",
 };
 
 // ── Deliberation result status (per-student outcome) ─────────────────────────
@@ -164,7 +161,6 @@ export const CYCLE_SHORT: Record<number, string> = {
   0: "L3",
   1: "M2",
 };
-
 
 export const MENTION_OPTIONS = [
   { value: 0, label: "Passable" },

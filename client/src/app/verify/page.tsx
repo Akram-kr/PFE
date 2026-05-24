@@ -29,21 +29,21 @@ export default function VerifyPage() {
           Vérification de diplôme
         </h1>
         <p className="mt-2 text-slate-500">
-          Entrez un numéro de token NFT pour vérifier instantanément l
-          authenticité d un diplôme de l Université de Blida 1.
+          Entrez un token NFT ou un matricule pour vérifier instantanément
+          l&apos;authenticité d&apos;un diplôme de l&apos;Université de Blida 1.
         </p>
       </div>
 
       {/* Search form */}
       <form onSubmit={handleSubmit} className="card">
         <label className="label text-left block mb-2">
-          Numéro de token NFT ou matricule
+          Token NFT ou matricule
         </label>
         <div className="flex gap-3">
           <input
             className="input flex-1"
             type="text"
-            placeholder="ex: 0, 1, 42, 2024-AB123…"
+            placeholder="ex: 42 ou 2024-AB123…"
             value={tokenId}
             onChange={(e) => setTokenId(e.target.value)}
           />
@@ -53,7 +53,8 @@ export default function VerifyPage() {
           </button>
         </div>
         <p className="mt-3 text-xs text-slate-400 text-left">
-          Entrez ici le token NFT ou le matricule de l étudiant.
+          Le champ accepte aussi bien un token que le matricule enregistré sur
+          la blockchain.
         </p>
       </form>
       {/* QR hint */}
