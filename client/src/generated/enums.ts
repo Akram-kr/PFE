@@ -21,7 +21,9 @@ export type AdmissionStatus = (typeof AdmissionStatus)[keyof typeof AdmissionSta
 export const YearLevel = {
   L1: 'L1',
   L2: 'L2',
-  L3: 'L3'
+  L3: 'L3',
+  M1: 'M1',
+  M2: 'M2'
 } as const
 
 export type YearLevel = (typeof YearLevel)[keyof typeof YearLevel]
@@ -33,7 +35,11 @@ export const Semester = {
   S3: 'S3',
   S4: 'S4',
   S5: 'S5',
-  S6: 'S6'
+  S6: 'S6',
+  S7: 'S7',
+  S8: 'S8',
+  S9: 'S9',
+  S10: 'S10'
 } as const
 
 export type Semester = (typeof Semester)[keyof typeof Semester]

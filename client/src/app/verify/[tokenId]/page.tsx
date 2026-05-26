@@ -12,6 +12,7 @@ import { DiplomaCard } from "@/components/verify/DiplomaCard";
 import { DiplomaQR } from "@/components/verify/DiplomaQR";
 import { CONTRACT_ADDRESS } from "@/lib/wagmi";
 import { DIPLOMA_ABI } from "@/lib/abi";
+import { getDeliberationFinalNoteForMatricule } from "@/lib/pfeDeliberation";
 import { Loader2, AlertCircle, ArrowLeft, ShieldAlert, X } from "lucide-react";
 import Link from "next/link";
 
@@ -121,11 +122,18 @@ export default function VerifyTokenPage({ params }: Props) {
               functionName: "getDiplomaRecord",
               args: [tokenId],
             })) as DiplomaRecord;
+            const deliberationNote = await getDeliberationFinalNoteForMatricule(
+              record.matricule,
+            );
 
             if (!active) return;
 
             setResolvedTokenId(tokenId);
-            setDiploma(record);
+            setDiploma({
+              ...record,
+              pfeNote:
+                deliberationNote !== null ? deliberationNote : record.pfeNote,
+            });
             setIsResolving(false);
             return;
           } catch {
@@ -150,11 +158,18 @@ export default function VerifyTokenPage({ params }: Props) {
           functionName: "getDiplomaByMatricule",
           args: [normalizedMatricule],
         })) as DiplomaRecord;
+        const deliberationNote = await getDeliberationFinalNoteForMatricule(
+          record.matricule,
+        );
 
         if (!active) return;
 
         setResolvedTokenId(tokenId);
-        setDiploma(record);
+        setDiploma({
+          ...record,
+          pfeNote:
+            deliberationNote !== null ? deliberationNote : record.pfeNote,
+        });
         setIsResolving(false);
       } catch {
         if (!active) return;

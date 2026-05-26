@@ -258,19 +258,23 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
       if (!payload.cids?.length) {
         throw new Error("Aucun CID IPFS n'a été retourné.");
       }
+    } catch (error: unknown) {
+      console.error("Error during batch finalization:", error);
 
-      writeContract({
-        ...diplomaContract,
-        functionName: "finalizeBatch",
-        args: [batchId, payload.cids],
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setFinalizeError(message);
+      // Cast to an object shape to read Wagmi error fields safely
+      const err = error as { shortMessage?: string; message?: string };
+
+      // Extract clean message or fall back gracefully
+      const cleanMessage =
+        err.shortMessage ||
+        (err.message
+          ? err.message.split("\n")[0]
+          : "La finalisation du lot a échoué.");
+
+      setFinalizeError(`Échec : ${cleanMessage}`);
       setIsPreparingFinalization(false);
     }
   };
-
   const handleAction = async (
     action: "signByDean" | "signByRector" | "finalizeBatch",
   ) => {
@@ -278,24 +282,47 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
       await handleFinalizeBatch();
       return;
     }
+    try {
+      writeContract({
+        ...diplomaContract,
+        functionName: action,
+        args: [batchId],
+      });
+    } catch (error: unknown) {
+      console.error(`Error during ${action}:`, error);
 
-    writeContract({
-      ...diplomaContract,
-      functionName: action,
-      args: [batchId],
-    });
+      const err = error as { shortMessage?: string; message?: string };
+      const cleanMessage =
+        err.shortMessage ||
+        (err.message
+          ? err.message.split("\n")[0]
+          : `L'action ${action} a échoué.`);
+
+      setFinalizeError(`Échec : ${cleanMessage}`);
+    }
   };
-
   const handleCancelConfirm = () => {
     if (!cancelReason.trim()) {
       return;
     }
+    try {
+      writeContract({
+        ...diplomaContract,
+        functionName: "cancelBatch",
+        args: [batchId, cancelReason.trim()],
+      });
+    } catch (error: unknown) {
+      console.error("Error during batch cancellation:", error);
 
-    writeContract({
-      ...diplomaContract,
-      functionName: "cancelBatch",
-      args: [batchId, cancelReason.trim()],
-    });
+      const err = error as { shortMessage?: string; message?: string };
+      const cleanMessage =
+        err.shortMessage ||
+        (err.message
+          ? err.message.split("\n")[0]
+          : "L'annulation du lot a échoué.");
+
+      setFinalizeError(`Échec : ${cleanMessage}`);
+    }
   };
 
   return (

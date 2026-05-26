@@ -98,6 +98,8 @@ enum YearLevel {
   L1
   L2
   L3
+  M1 
+  M2
 }
 
 enum Semester {
@@ -107,4 +109,8 @@ enum Semester {
   S4
   S5
   S6
+  S7
+  S8
+  S9
+  S10
 }

@@ -3,9 +3,9 @@ export interface BatchDraftStudent {
   studentName: string;
   matricule: string;
   department: string;
-  graduationYear: number;
-  totalCredits: number;
-  pfeNote: number;
+  graduationYear: bigint;
+  totalCredits: bigint;
+  pfeNote: bigint;
 }
 
 const STORAGE_KEY = "diplochain-batch-drafts";

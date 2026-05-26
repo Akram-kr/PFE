@@ -2,7 +2,9 @@ import { Semester, YearLevel, AdmissionStatus } from "../src/generated/client";
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
-  console.log("🌱 Starting complete LMD database seeding...");
+  console.log(
+    "🌱 Starting complete LMD (License & Master) database seeding...",
+  );
 
   // 1. Clear existing data (Strict order to prevent Foreign Key constraint crashes)
   await prisma.annualAverage.deleteMany();
@@ -13,7 +15,7 @@ async function main() {
 
   console.log("🧹 Cleaned up all old data structures.");
 
-  // 2. Create Core Courses for L1, L2, and L3 (Ensure total credits equal 30 per semester)
+  // 2. Create Core Courses for L1, L2, L3, M1, and M2 (Ensure total credits equal 30 per semester)
   console.log("📚 Populating academic courses...");
   const coursesData = [
     // === L1 HIERARCHY ===
@@ -184,6 +186,92 @@ async function main() {
       semester: Semester.S6,
       yearLevel: YearLevel.L3,
     },
+
+    // === M1 HIERARCHY ===
+    {
+      code: "CS401",
+      name: "Advanced Database Architectures",
+      credits: 10,
+      coefficient: 3.0,
+      semester: Semester.S1,
+      yearLevel: YearLevel.M1,
+    },
+    {
+      code: "CS402",
+      name: "Applied Cryptography & Network Security",
+      credits: 10,
+      coefficient: 3.0,
+      semester: Semester.S1,
+      yearLevel: YearLevel.M1,
+    },
+    {
+      code: "CS403",
+      name: "Operations Research & Optimization",
+      credits: 10,
+      coefficient: 2.0,
+      semester: Semester.S1,
+      yearLevel: YearLevel.M1,
+    },
+
+    {
+      code: "CS404",
+      name: "Distributed Algorithms",
+      credits: 10,
+      coefficient: 3.0,
+      semester: Semester.S2,
+      yearLevel: YearLevel.M1,
+    },
+    {
+      code: "CS405",
+      name: "Machine Learning Foundations",
+      credits: 10,
+      coefficient: 3.0,
+      semester: Semester.S2,
+      yearLevel: YearLevel.M1,
+    },
+    {
+      code: "CS406",
+      name: "Mobile App Development",
+      credits: 10,
+      coefficient: 2.0,
+      semester: Semester.S2,
+      yearLevel: YearLevel.M1,
+    },
+
+    // === M2 HIERARCHY ===
+    {
+      code: "CS501",
+      name: "Cloud Native Computing & DevOps",
+      credits: 10,
+      coefficient: 3.0,
+      semester: Semester.S3,
+      yearLevel: YearLevel.M2,
+    },
+    {
+      code: "CS502",
+      name: "Blockchain & Decentralized Systems",
+      credits: 10,
+      coefficient: 3.0,
+      semester: Semester.S3,
+      yearLevel: YearLevel.M2,
+    },
+    {
+      code: "CS503",
+      name: "Big Data & Analytics",
+      credits: 10,
+      coefficient: 2.0,
+      semester: Semester.S3,
+      yearLevel: YearLevel.M2,
+    },
+
+    {
+      code: "PFE500",
+      name: "Master Thesis / Graduation Project",
+      credits: 30,
+      coefficient: 6.0,
+      semester: Semester.S4,
+      yearLevel: YearLevel.M2,
+    },
   ];
 
   const dbCourses = [];
@@ -231,16 +319,15 @@ async function main() {
   console.log("📝 Generating records for Amine (Passes via high average)...");
   const l3Courses = dbCourses.filter((c) => c.yearLevel === YearLevel.L3);
 
-  // Define performance notes for courses
   const amineGrades: Record<
     string,
     { cc: number; exam: number; final: number }
   > = {
-    CS301: { cc: 14, exam: 12, final: 12.8 }, // S5
-    CS302: { cc: 15, exam: 11, final: 12.6 }, // S5
-    CS305: { cc: 13, exam: 10, final: 11.2 }, // S5
-    CS303: { cc: 16, exam: 14, final: 14.8 }, // S6
-    PFE300: { cc: 17, exam: 16, final: 16.4 }, // S6
+    CS301: { cc: 14, exam: 12, final: 12.8 },
+    CS302: { cc: 15, exam: 11, final: 12.6 },
+    CS305: { cc: 13, exam: 10, final: 11.2 },
+    CS303: { cc: 16, exam: 14, final: 14.8 },
+    PFE300: { cc: 17, exam: 16, final: 16.4 },
   };
 
   for (const course of l3Courses) {
@@ -258,7 +345,6 @@ async function main() {
     });
   }
 
-  // Add Semestrial Transcripts for Amine
   await prisma.transcript.createMany({
     data: [
       {
@@ -280,20 +366,17 @@ async function main() {
     ],
   });
 
-  // Add Annual Average for Amine (Formula: Total Weighted / Total Coeffs = 14.47)
-  const years = [YearLevel.L1, YearLevel.L2, YearLevel.L3];
-  const academicYears = ["2023-2024", "2024-2025", "2025-2026"];
+  // Amine's historical annual progression records (L1 -> L2 -> L3)
+  const loopsAmine = [YearLevel.L1, YearLevel.L2, YearLevel.L3];
+  const academicYearsAmine = ["2023-2024", "2024-2025", "2025-2026"];
 
-  // --- Apply this loop to each student (Amine, Sarah, Anis) ---
-  // For each student, we create 3 records instead of 1
   for (let i = 0; i < 3; i++) {
     await prisma.annualAverage.create({
       data: {
-        studentId: student1.id, // Replace with student2.id / student3.id respectively
-        yearLevel: years[i],
-        academicYear: academicYears[i],
-        // Use logic to generate or map your existing averages to the 3-year sequence
-        average: 10.0 + i * 1.5 + Math.random() * 0.5,
+        studentId: student1.id,
+        yearLevel: loopsAmine[i],
+        academicYear: academicYearsAmine[i],
+        average: 11.2 + i * 1.3,
         totalCredits: 60,
         status: AdmissionStatus.ADMIS_MOYENNE,
       },
@@ -301,25 +384,24 @@ async function main() {
   }
 
   // ==========================================
-  // CASE 2: SARAH (L2) - ADMIS PAR CREDITS (Compensated via >= 30 credits)
+  // CASE 2: SARAH (L2) - ADMIS PAR CREDITS
   // ==========================================
   console.log(
     "📝 Generating records for Sarah (Passes via LMD Credit Rule)...",
   );
   const l2Courses = dbCourses.filter((c) => c.yearLevel === YearLevel.L2);
 
-  // Sarah passes S3 cleanly but fails S4 badly. Annual average falls below 10.
   const sarahGrades: Record<
     string,
     { cc: number; exam: number; final: number }
   > = {
-    CS201: { cc: 12, exam: 11, final: 11.4 }, // Pass (8 credits)
-    CS202: { cc: 14, exam: 10, final: 11.6 }, // Pass (8 credits)
-    MATH201: { cc: 11, exam: 12, final: 11.6 }, // Pass (8 credits)
-    CS205: { cc: 10, exam: 10, final: 10.0 }, // Pass (6 credits) -> S3 Credits = 30!
-    CS203: { cc: 8, exam: 5, final: 6.2 }, // Fail (0 credits)
-    CS204: { cc: 9, exam: 6, final: 7.2 }, // Fail (0 credits)
-    CS206: { cc: 7, exam: 4, final: 5.2 }, // Fail (0 credits)
+    CS201: { cc: 12, exam: 11, final: 11.4 },
+    CS202: { cc: 14, exam: 10, final: 11.6 },
+    MATH201: { cc: 11, exam: 12, final: 11.6 },
+    CS205: { cc: 10, exam: 10, final: 10.0 },
+    CS203: { cc: 8, exam: 5, final: 6.2 },
+    CS204: { cc: 9, exam: 6, final: 7.2 },
+    CS206: { cc: 7, exam: 4, final: 5.2 },
   };
 
   for (const course of l2Courses) {
@@ -358,40 +440,44 @@ async function main() {
     ],
   });
 
-  // For each student, we create 3 records instead of 1
-  for (let i = 0; i < 3; i++) {
+  // Sarah's annual tracking sequence (L1 -> L2)
+  const loopsSarah = [YearLevel.L1, YearLevel.L2];
+  const academicYearsSarah = ["2024-2025", "2025-2026"];
+
+  for (let i = 0; i < 2; i++) {
     await prisma.annualAverage.create({
       data: {
-        studentId: student2.id, // Replace with student2.id / student3.id respectively
-        yearLevel: years[i],
-        academicYear: academicYears[i],
-        // Use logic to generate or map your existing averages to the 3-year sequence
-        average: 10.0 + i * 1.5 + Math.random() * 0.5,
-        totalCredits: 60,
-        status: AdmissionStatus.ADMIS_MOYENNE,
+        studentId: student2.id,
+        yearLevel: loopsSarah[i],
+        academicYear: academicYearsSarah[i],
+        average: i === 0 ? 10.5 : 8.77,
+        totalCredits: i === 0 ? 60 : 30,
+        status:
+          i === 0
+            ? AdmissionStatus.ADMIS_MOYENNE
+            : AdmissionStatus.ADMIS_CREDITS,
       },
     });
   }
 
   // ==========================================
-  // CASE 3: ANIS (L1) - AJOURNE (Failed / Retakes Year)
+  // CASE 3: ANIS (L1) - AJOURNE (Failed)
   // ==========================================
   console.log("📝 Generating records for Anis (Ajourné)...");
   const l1Courses = dbCourses.filter((c) => c.yearLevel === YearLevel.L1);
 
-  // Anis has bad notes everywhere and fails to get even 30 credits
   const anisGrades: Record<
     string,
     { cc: number; exam: number; final: number }
   > = {
-    MATH101: { cc: 8, exam: 6, final: 6.8 }, // Fail
-    CS101: { cc: 11, exam: 10, final: 10.4 }, // Pass (9 credits)
-    ST101: { cc: 6, exam: 5, final: 5.4 }, // Fail
-    ENG101: { cc: 12, exam: 10, final: 10.8 }, // Pass (6 credits) -> S1 = 15 credits
-    MATH102: { cc: 5, exam: 4, final: 4.4 }, // Fail
-    CS102: { cc: 8, exam: 7, final: 7.4 }, // Fail
-    ST102: { cc: 7, exam: 6, final: 6.4 }, // Fail
-    ENG102: { cc: 10, exam: 10, final: 10.0 }, // Pass (6 credits) -> S2 = 6 credits
+    MATH101: { cc: 8, exam: 6, final: 6.8 },
+    CS101: { cc: 11, exam: 10, final: 10.4 },
+    ST101: { cc: 6, exam: 5, final: 5.4 },
+    ENG101: { cc: 12, exam: 10, final: 10.8 },
+    MATH102: { cc: 5, exam: 4, final: 4.4 },
+    CS102: { cc: 8, exam: 7, final: 7.4 },
+    ST102: { cc: 7, exam: 6, final: 6.4 },
+    ENG102: { cc: 10, exam: 10, final: 10.0 },
   };
 
   for (const course of l1Courses) {
@@ -430,25 +516,19 @@ async function main() {
     ],
   });
 
-  // Total credits = 21 (Less than 30) & Average = 7.18 -> Ajourné
-
-  // For each student, we create 3 records instead of 1
-  for (let i = 0; i < 3; i++) {
-    await prisma.annualAverage.create({
-      data: {
-        studentId: student3.id, // Replace with student2.id / student3.id respectively
-        yearLevel: years[i],
-        academicYear: academicYears[i],
-        // Use logic to generate or map your existing averages to the 3-year sequence
-        average: 10.0 + i * 1.5 + Math.random() * 0.5,
-        totalCredits: 60,
-        status: AdmissionStatus.ADMIS_MOYENNE,
-      },
-    });
-  }
+  await prisma.annualAverage.create({
+    data: {
+      studentId: student3.id,
+      yearLevel: YearLevel.L1,
+      academicYear,
+      average: 7.18,
+      totalCredits: 21,
+      status: AdmissionStatus.AJOURNE,
+    },
+  });
 
   console.log(
-    "🎉 Database seeding completed successfully with all LMD pathways!",
+    "🎉 Database seeding completed successfully with all LMD pathways including Master Tiers!",
   );
 }
 

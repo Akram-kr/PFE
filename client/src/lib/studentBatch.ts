@@ -1,5 +1,5 @@
 "use server";
-
+import { getDeliberationFinalNoteForMatricule } from "@/lib/pfeDeliberation";
 import { prisma } from "@/lib/prisma";
 
 export interface StudentBatchProfile {
@@ -14,6 +14,8 @@ export interface StudentBatchProfile {
     l1Average: number | null;
     l2Average: number | null;
     l3Average: number | null;
+    m1Average: number | null;
+    m2Average: number | null;
   };
 }
 
@@ -31,7 +33,12 @@ function deriveGraduationYear(academicYear?: string | null): number {
 
   return new Date().getFullYear();
 }
+async function resolveFinalPfeNote(matricule: string): Promise<number> {
+  const deliberationNote =
+    await getDeliberationFinalNoteForMatricule(matricule);
 
+  return deliberationNote ? deliberationNote : 0;
+}
 export async function getStudentBatchProfile(
   matricule: string,
 ): Promise<StudentBatchProfile | null> {
@@ -42,18 +49,10 @@ export async function getStudentBatchProfile(
   }
 
   const student = await prisma.student.findUnique({
-    where: { matricule: normalizedMatricule },
-    include: {
-      annualAverages: {
-        orderBy: { academicYear: "desc" },
-        take: 5,
-      },
-      enrollments: {
-        where: {
-          course: { code: "PFE300" },
-        },
-        orderBy: { academicYear: "desc" },
-        take: 1,
+    where: {
+      matricule: normalizedMatricule,
+      currentYear: {
+        in: ["M2", "L3"],
       },
     },
   });
@@ -66,19 +65,21 @@ export async function getStudentBatchProfile(
     where: {
       studentId: student.id,
     },
+    orderBy: { academicYear: "desc" },
   });
 
   const totalCredits = annual.reduce((sum, avg) => sum + avg.totalCredits, 0);
-  const latestAnnualAverage = student.annualAverages[0];
-  const pfeEnrollment = student.enrollments[0];
+  const latestAnnualAverage = annual[0];
 
   const academicHistory: StudentBatchProfile["academicHistory"] = {
     l1Average: null,
     l2Average: null,
     l3Average: null,
+    m1Average: null,
+    m2Average: null,
   };
 
-  for (const average of student.annualAverages) {
+  for (const average of annual) {
     if (average.yearLevel === "L1") {
       academicHistory.l1Average = average.average * 100;
     }
@@ -90,6 +91,12 @@ export async function getStudentBatchProfile(
     if (average.yearLevel === "L3") {
       academicHistory.l3Average = average.average * 100;
     }
+    if (average.yearLevel === "M1") {
+      academicHistory.m1Average = average.average * 100;
+    }
+    if (average.yearLevel === "M2") {
+      academicHistory.m2Average = average.average * 100;
+    }
   }
 
   if (!student.wallet) {
@@ -97,7 +104,8 @@ export async function getStudentBatchProfile(
       "Le matricule existe mais aucun wallet n'est enregistré dans Prisma.",
     );
   }
-
+  const pfeNote = await resolveFinalPfeNote(student.matricule);
+  console.log(`PFE Note for ${student.matricule}: ${pfeNote / 100}`);
   return {
     matricule: student.matricule,
     wallet: student.wallet,
@@ -107,9 +115,7 @@ export async function getStudentBatchProfile(
       student.graduationYear ??
       deriveGraduationYear(latestAnnualAverage?.academicYear ?? null),
     totalCredits,
-    pfeNote: pfeEnrollment?.finalNote
-      ? Math.round(pfeEnrollment.finalNote * 100)
-      : 0,
+    pfeNote: pfeNote,
     academicHistory,
   };
 }

@@ -73,8 +73,19 @@ function RoleRow({ label, roleHash, color, onDone }: RoleRowProps) {
       setInput("");
       onDone();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setFeedback({ ok: false, msg: msg.slice(0, 120) });
+      console.error(`Error during ${action}:`, err);
+
+      // 1. Extract the clean human-readable error from Wagmi
+      const cleanMessage =
+        (err as { shortMessage?: string }).shortMessage ||
+        (err as { message?: string }).message
+          ? (err as { message?: string }).message?.split("\n")[0]
+          : "Transaction annulée.";
+
+      setFeedback({
+        ok: false,
+        msg: `Échec : ${cleanMessage}`,
+      });
     }
   }
 
@@ -151,7 +162,7 @@ function RoleRow({ label, roleHash, color, onDone }: RoleRowProps) {
           ) : (
             <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           )}
-          <span className="break-all">{feedback.msg}</span>
+          <span className="break-words">{feedback.msg}</span>
         </div>
       )}
     </div>

@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Loader2,
   Users,
+  FileText,
 } from "lucide-react";
 import { parseAbiItem } from "viem";
 import { publicClient } from "@/lib/contract";
@@ -17,6 +18,7 @@ import { CONTRACT_ADDRESS } from "@/lib/wagmi";
 import { ProposeBatchFormAuto } from "@/components/admin/ProposeBatchFormAuto";
 import { BatchCard } from "@/components/admin/BatchCard";
 import { ManageRoles } from "@/components/admin/ManageRoles";
+import { InitializeDeliberationForm } from "@/components/admin/InitializeDeliberationForm";
 import { WalletButton } from "@/components/WalletButton";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +49,7 @@ export default function AdminPage() {
   const { role, isLoading, address } = useRole();
   const [showForm, setShowForm] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
+  const [showDeliberation, setShowDeliberation] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [batchIds, setBatchIds] = useState<bigint[]>([]);
   const [totalTokens, setTotalTokens] = useState(0);
@@ -253,6 +256,33 @@ export default function AdminPage() {
                 onSuccess={() => {
                   setShowForm(false);
                   handleRefresh();
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Initialize deliberation (admin only) */}
+      {isAdmin && (
+        <div className="card">
+          <button
+            onClick={() => setShowDeliberation((s) => !s)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2 font-semibold text-slate-800">
+              <FileText className="h-5 w-5 text-emerald-500" />
+              Initialiser une délibération
+            </div>
+            <span className="text-xs text-slate-400">
+              {showDeliberation ? "Fermer ▲" : "Ouvrir ▼"}
+            </span>
+          </button>
+          {showDeliberation && (
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <InitializeDeliberationForm
+                onSuccess={() => {
+                  setShowDeliberation(false);
                 }}
               />
             </div>

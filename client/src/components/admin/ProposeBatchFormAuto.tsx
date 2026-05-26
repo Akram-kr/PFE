@@ -142,6 +142,7 @@ export function ProposeBatchFormAuto({ onSuccess }: Props) {
         pfeNote: profile.pfeNote,
         status: "idle",
       });
+
       setGlobalError("");
     } catch (error) {
       resetRowProfile(rowId, normalizedMatricule);
@@ -173,7 +174,7 @@ export function ProposeBatchFormAuto({ onSuccess }: Props) {
         Boolean(row.department) &&
         row.graduationYear > 1900 &&
         row.totalCredits !== null &&
-        row.totalCredits > 0 &&
+        row.totalCredits >= 0 && // Changed from > 0 to >= 0 to allow 0 credits
         row.pfeNote !== null &&
         row.pfeNote >= 0;
 
@@ -187,24 +188,47 @@ export function ProposeBatchFormAuto({ onSuccess }: Props) {
       return;
     }
 
-    const students = rows.map((row) => ({
-      wallet: row.wallet as `0x${string}`,
-      studentName: row.studentName,
-      matricule: row.matricule,
-      department: row.department,
-      graduationYear: row.graduationYear,
-      totalCredits: row.totalCredits as number,
-      pfeNote: row.pfeNote as number,
-      ipfsCID: "",
-    }));
+    try {
+      // 🚨 Format explicitly for Solidity (Numbers must often be BigInt for uint256)
+      const students = rows.map((row) => ({
+        wallet: row.wallet as `0x${string}`,
+        studentName: row.studentName,
+        matricule: row.matricule,
+        department: row.department,
+        graduationYear: BigInt(row.graduationYear),
+        totalCredits: BigInt(row.totalCredits as number),
+        pfeNote: BigInt(row.pfeNote as number),
+        ipfsCID: "",
+      }));
 
-    setSubmitStep("proposing");
+      setSubmitStep("proposing");
 
-    writeContract({
-      ...diplomaContract,
-      functionName: "proposeBatch",
-      args: [students, description],
-    });
+      // 🚨 Add callback listeners to handle wallet success/failure
+      writeContract(
+        {
+          ...diplomaContract,
+          functionName: "proposeBatch",
+          args: [students, description],
+        },
+        {
+          onError: (error) => {
+            console.error("MetaMask / Contract Error:", error);
+            // This UNFREEZES the button if you cancel or if there's a contract revert
+            setSubmitStep("idle");
+            setGlobalError(
+              "Échec de la transaction : " +
+                (error.message.split("\n")[0] || "Annulée par l'utilisateur."),
+            );
+          },
+        },
+      );
+    } catch (err) {
+      console.error("Data formatting error:", err);
+      setSubmitStep("idle");
+      setGlobalError(
+        "Erreur lors de la préparation des données pour le contrat.",
+      );
+    }
   };
 
   const loading = isProposePending || isConfirming || submitStep !== "idle";
@@ -212,8 +236,8 @@ export function ProposeBatchFormAuto({ onSuccess }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-        <strong>PDF auto-généré à la finalisation.</strong> Aucun upload n'est
-        requis au moment de la proposition.
+        <strong>PDF auto-généré à la finalisation.</strong> Aucun upload
+        n&apos;est requis au moment de la proposition.
       </div>
 
       <div>

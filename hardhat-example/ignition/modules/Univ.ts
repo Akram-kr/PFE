@@ -21,7 +21,8 @@ const Univ = buildModule("Univ", (m) => {
 
   const universityDiploma = m.contract("UniversityDiploma", [adminAddress]);
   const FileStorage = m.contract("FileStorage", []);
-  return { universityDiploma, FileStorage };
+  const deliberation = m.contract("PFEDeliberation", []);
+  return { universityDiploma, FileStorage, deliberation };
 });
 
 export default Univ;
