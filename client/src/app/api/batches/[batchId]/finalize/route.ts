@@ -86,7 +86,7 @@ export async function POST(
     const cids = await Promise.all(
       students.map(async (student) => {
         const profile = await getStudentBatchProfile(student.matricule);
-
+        const deplome = profile?.currentYear === "M2" ? "Master" : "Licence";
         if (!profile) {
           throw new Error(`Étudiant introuvable : ${student.matricule}`);
         }
@@ -94,6 +94,7 @@ export async function POST(
         const html = buildDiplomaHtml({
           batchId: batchIdBigInt.toString(),
           studentName: profile.studentName,
+          deplome: deplome,
           matricule: profile.matricule,
           department: profile.department,
           graduationYear: profile.graduationYear,
@@ -102,6 +103,8 @@ export async function POST(
           l1Average: profile.academicHistory.l1Average,
           l2Average: profile.academicHistory.l2Average,
           l3Average: profile.academicHistory.l3Average,
+          m1Average: profile.academicHistory.m1Average,
+          m2Average: profile.academicHistory.m2Average,
           deanAddress: deanAddress,
           rectorAddress: rectorAddress,
         });

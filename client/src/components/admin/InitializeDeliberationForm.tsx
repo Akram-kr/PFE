@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { isAddress } from "viem";
 import { Loader2, Send } from "lucide-react";
+import { getStudentBatchProfile } from "@/lib/studentBatch";
 import {
   useAccount,
   useReadContract,
@@ -48,6 +49,7 @@ export function InitializeDeliberationForm({ onSuccess }: Props) {
   const { address } = useAccount();
   const [form, setForm] = useState<SessionForm>(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [fetchingError, setFetchingError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const deliberationAddress = PFE_DELIBERATION_ADDRESS as
     | `0x${string}`
@@ -109,12 +111,54 @@ export function InitializeDeliberationForm({ onSuccess }: Props) {
     setError(null);
     setForm((current) => ({ ...current, [field]: value }));
   };
+  const resetProfile = (matricule: string) => {
+    updateField("matricule", matricule);
+    updateField("name", "");
+    updateField("specialty", "");
+    updateField("academicYear", "");
+  };
+  const lookupStudent = async (matricule: string) => {
+    const normalizedMatricule = matricule.trim();
 
+    if (!normalizedMatricule) {
+      updateField("matricule", "");
+      updateField("name", "");
+      updateField("specialty", "");
+      updateField("academicYear", "");
+      setFetchingError(
+        "Le matricule est requis pour charger le profil étudiant.",
+      );
+      return;
+    }
+
+    try {
+      const profile = await getStudentBatchProfile(normalizedMatricule);
+
+      if (!profile) {
+        throw new Error("Aucun étudiant trouvé pour ce matricule.");
+      }
+
+      // Update the form with the retrieved profile data
+      updateField("matricule", profile.matricule);
+      updateField("name", profile.studentName);
+      updateField("specialty", profile.department);
+      updateField("academicYear", profile.currentYear);
+
+      setFetchingError("");
+    } catch (error) {
+      updateField("matricule", normalizedMatricule);
+      setFetchingError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de charger le profil étudiant.",
+      );
+    }
+  };
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    console.log("Form submission triggered", form);
     event.preventDefault();
     setError(null);
     setIsPending(true);
-
     if (!deliberationAddress) {
       setError("Adresse du contrat de délibération non configurée.");
       return;
@@ -134,10 +178,7 @@ export function InitializeDeliberationForm({ onSuccess }: Props) {
 
     const requiredFields = [
       form.matricule,
-      form.name,
       form.pfeTitle,
-      form.specialty,
-      form.academicYear,
       form.president,
       form.promoteur,
       form.examinateur1,
@@ -153,7 +194,8 @@ export function InitializeDeliberationForm({ onSuccess }: Props) {
       setError("Une ou plusieurs adresses du jury sont invalides.");
       return;
     }
-
+    // ####################
+    console.log("Submitting form with data:", form);
     try {
       await writeContractAsync({
         address: deliberationAddress,
@@ -175,6 +217,7 @@ export function InitializeDeliberationForm({ onSuccess }: Props) {
           },
         ],
       });
+      setIsPending(false);
     } catch (submitError: unknown) {
       console.error("Error during session initialization:", submitError);
       const err = submitError as { shortMessage?: string; message?: string };
@@ -208,60 +251,73 @@ export function InitializeDeliberationForm({ onSuccess }: Props) {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="space-y-1">
-          <span className="label">Matricule</span>
-          <input
-            className="input"
-            value={form.matricule}
-            onChange={(event) => updateField("matricule", event.target.value)}
-            placeholder="202331000001"
-          />
-        </label>
+      <div className="space-y-3  border border-slate-200  rounded-xl  bg-slate-50 p-4 text-sm">
+        {/* Top Section: Matricule Input remains on its own line */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="label mb-1">Matricule *</label>
+            <input
+              className="input font-mono w-full"
+              placeholder="202331000001"
+              value={form.matricule}
+              onChange={(event) => resetProfile(event.target.value)}
+              onBlur={() => lookupStudent(form.matricule)}
+              required
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Le profil étudiant est chargé depuis Progress après validation du
+              matricule.
+            </p>
+          </div>
+          <div>
+            <label className="label mb-1">Project name</label>
+            <input
+              className="input w-full"
+              placeholder="Titre du projet"
+              value={form.pfeTitle}
+              onChange={(event) => updateField("pfeTitle", event.target.value)}
+            />
+          </div>
+        </div>
+        {/* Bottom Section: ONLY the profile details rendered on a clean single line */}
+        <div className=" input flex flex-row items-center bg-white justify-between rounded-lg gap-6 border-t border-slate-100 p-4">
+          {/* 1. Nom Complet */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400 whitespace-nowrap">
+              Nom complet
+            </p>
+            <p className="font-medium text-slate-800 truncate">
+              {form.name || "_"}
+            </p>
+          </div>
 
-        <label className="space-y-1">
-          <span className="label">Nom complet</span>
-          <input
-            className="input"
-            value={form.name}
-            onChange={(event) => updateField("name", event.target.value)}
-            placeholder="Nom Prénom"
-          />
-        </label>
+          {/* 2. Spécialité */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400 whitespace-nowrap">
+              Spécialité
+            </p>
+            <p className="font-medium text-slate-800 truncate">
+              {form.specialty || "_"}
+            </p>
+          </div>
 
-        <label className="space-y-1">
-          <span className="label">Sujet PFE</span>
-          <input
-            className="input"
-            value={form.pfeTitle}
-            onChange={(event) => updateField("pfeTitle", event.target.value)}
-            placeholder="Titre du projet"
-          />
-        </label>
+          {/* 3. Année de promotion */}
+          <div className="shrink-0 ">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400 whitespace-nowrap">
+              Année de promotion
+            </p>
 
-        <label className="space-y-1">
-          <span className="label">Spécialité</span>
-          <input
-            className="input"
-            value={form.specialty}
-            onChange={(event) => updateField("specialty", event.target.value)}
-            placeholder="Génie logiciel"
-          />
-        </label>
-
-        <label className="space-y-1 md:col-span-2">
-          <span className="label">Année académique</span>
-          <input
-            className="input"
-            value={form.academicYear}
-            onChange={(event) =>
-              updateField("academicYear", event.target.value)
-            }
-            placeholder="2024/2025"
-          />
-        </label>
+            <p className="font-medium text-slate-800">
+              {form.academicYear || "_"}
+            </p>
+          </div>
+        </div>
       </div>
-
+      {fetchingError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {fetchingError}
+        </div>
+      )}
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <p className="text-sm font-semibold text-slate-800">Jury</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">

@@ -10,6 +10,7 @@ export interface StudentBatchProfile {
   graduationYear: number;
   totalCredits: number;
   pfeNote: number;
+  currentYear: string;
   academicHistory: {
     l1Average: number | null;
     l2Average: number | null;
@@ -70,7 +71,7 @@ export async function getStudentBatchProfile(
 
   const totalCredits = annual.reduce((sum, avg) => sum + avg.totalCredits, 0);
   const latestAnnualAverage = annual[0];
-
+  const currentYear = student.currentYear;
   const academicHistory: StudentBatchProfile["academicHistory"] = {
     l1Average: null,
     l2Average: null,
@@ -117,5 +118,6 @@ export async function getStudentBatchProfile(
     totalCredits,
     pfeNote: pfeNote,
     academicHistory,
+    currentYear,
   };
 }

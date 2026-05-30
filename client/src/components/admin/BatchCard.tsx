@@ -235,6 +235,7 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
     try {
       setIsPreparingFinalization(true);
 
+      // 1. Generate PDFs and upload to IPFS via your backend
       const response = await fetch(
         `/api/batches/${batchId.toString()}/finalize`,
         {
@@ -258,13 +259,19 @@ export function BatchCard({ batchId, onUpdate }: BatchCardProps) {
       if (!payload.cids?.length) {
         throw new Error("Aucun CID IPFS n'a été retourné.");
       }
+
+      writeContract({
+        ...diplomaContract,
+        functionName: "finalizeBatch",
+        args: [batchId, payload.cids], // Or just [batchId] if your contract resolves metadata differently
+      });
+
+      // Lower the local setup loader since wagmi's `isPending` will take over tracking the transaction signature
+      setIsPreparingFinalization(false);
     } catch (error: unknown) {
       console.error("Error during batch finalization:", error);
 
-      // Cast to an object shape to read Wagmi error fields safely
       const err = error as { shortMessage?: string; message?: string };
-
-      // Extract clean message or fall back gracefully
       const cleanMessage =
         err.shortMessage ||
         (err.message

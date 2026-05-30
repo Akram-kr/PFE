@@ -511,7 +511,7 @@ export default function JuryPage() {
         });
 
         setSubmittingSessionId(null);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("MetaMask / Contract Error:", error);
 
         // 1. Instantly unfreeze the submitting state
@@ -519,10 +519,10 @@ export default function JuryPage() {
 
         // 2. Extract the clean revert message (e.g., "Jury already voted" or "User rejected request")
         const customMessage =
-          error.shortMessage ||
-          (error.message
-            ? error.message.split("\n")[0]
-            : "Annulée par l'utilisateur.");
+          (error as { shortMessage?: string }).shortMessage ||
+          (error as { message?: string }).message
+            ? (error as { message?: string }).message?.split("\n")[0]
+            : "Annulée par l'utilisateur.";
 
         // 3. Display it in the error box
         setError(`Échec : ${customMessage}`);
